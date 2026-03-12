@@ -36,6 +36,8 @@ export function renderSidebarRight(article) {
   }
 
   // 2. Spis treści
+  // extractHeadings() zwraca teraz slug spójny z renderMarkdown (slugify()).
+  // CSS.escape() poprawnie obsługuje polskie litery i myślniki w selektorach.
   const headings = extractHeadings(article.content || '');
   if (headings.length) {
     const section = makeSRSection('sr-toc', 'Spis treści');
@@ -43,7 +45,7 @@ export function renderSidebarRight(article) {
       const a = document.createElement('a');
       a.className = `toc-item toc-h${h.level}`;
       a.textContent = h.text;
-      a.dataset.headingId = h.id;
+      a.dataset.headingId = h.id;   // slug (bez #)
       a.addEventListener('click', () => scrollToHeading(h.id));
       section.querySelector('div').appendChild(a);
     });
@@ -102,8 +104,12 @@ function makeSRSection(id, title) {
   return wrap;
 }
 
-function scrollToHeading(id) {
-  const heading = document.querySelector(`#main-content [id="${CSS.escape(id)}"]`);
+/**
+ * Scrolluje do nagłówka w treści artykułu.
+ * Używa CSS.escape() aby bezpiecznie użyć slug jako CSS selector.
+ */
+function scrollToHeading(slug) {
+  const heading = document.querySelector(`#main-content [id="${CSS.escape(slug)}"]`);
   if (heading) heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -122,6 +128,7 @@ function setupTocObserver(headings) {
   }, { rootMargin: '-20% 0px -70% 0px' });
 
   headings.forEach(h => {
+    // CSS.escape() na slug zamiast h.text — spójne z renderMarkdown
     const el = document.querySelector(`#main-content [id="${CSS.escape(h.id)}"]`);
     if (el) tocObserver.observe(el);
   });
