@@ -28,6 +28,9 @@
       <button id="btn-tags-panel" class="nav-btn" title="Tagi">
         <span class="nav-btn-icon">🏷</span><span class="nav-btn-label">Tagi</span>
       </button>
+      <button id="btn-paths-panel" class="nav-btn" title="Ścieżki czytania">
+        <span class="nav-btn-icon">🗺</span><span class="nav-btn-label">Ścieżki</span>
+      </button>
       <button id="btn-import-wikipedia" class="nav-btn" title="Importuj z Wikipedii">
         <span class="nav-btn-icon">⬇</span><span class="nav-btn-label">Wikipedia</span>
       </button>
@@ -88,6 +91,15 @@
       <button class="icon-btn" id="btn-close-tabs-panel">✕</button>
     </div>
     <div id="tabs-list"></div>
+  </div>
+ 
+  <!-- PANEL: READING PATHS -->
+  <div id="panel-paths" class="side-panel hidden">
+    <div class="side-panel-header">
+      <span>🗺 Ścieżki czytania</span>
+      <button class="icon-btn" id="btn-close-paths-panel">✕</button>
+    </div>
+    <div id="paths-panel-content" style="flex:1;overflow-y:auto;display:flex;flex-direction:column"></div>
   </div>
  
   <!-- PANEL: LINK PREVIEW (slides from right) -->
