@@ -227,14 +227,41 @@ async function renderArticle(id, hash = '') {
 
 // ── WIDOK WSZYSTKICH ARTYKUŁÓW ────────────────────────────
 
+function getArticleCacheSize(id) {
+  try {
+    const raw = localStorage.getItem('kp_content_' + id);
+    if (!raw) return '';
+    return formatBytes(raw.length * 2); // UTF-16: ~2 bajty na znak
+  } catch { return ''; }
+}
+ 
+function formatBytes(bytes) {
+  if (bytes < 1024)        return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
 function renderAllArticlesView() {
   const main = document.getElementById('main-content');
   clearSidebarRight();
-
+ 
   const articles = [...getAllMeta()].sort((a, b) =>
     (a.title || '').localeCompare(b.title || '', 'pl')
   );
-
+ 
+  // Oblicz łączny rozmiar wszystkich artykułów w cache
+  let totalBytes = 0;
+  for (const a of articles) {
+    try {
+      const raw = localStorage.getItem('kp_content_' + a.id);
+      if (raw) totalBytes += raw.length * 2;
+    } catch {}
+  }
+  const totalSize  = totalBytes ? ' · ' + formatBytes(totalBytes) + ' łącznie' : '';
+  const cachedCount = articles.filter(a => {
+    try { return !!localStorage.getItem('kp_content_' + a.id); } catch { return false; }
+  }).length;
+ 
   main.innerHTML = `
     <div id="view-home" style="padding:36px 48px;max-width:860px">
       <h1 style="font-family:var(--font-heading);font-size:1.7rem;margin-bottom:20px">📄 Wszystkie artykuły</h1>
@@ -243,38 +270,56 @@ function renderAllArticlesView() {
           style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
                  background:var(--bg-panel);color:var(--text);font-family:var(--font-ui);
                  font-size:.88rem;outline:none;min-width:200px"/>
-        <span id="all-articles-count" style="font-size:.8rem;color:var(--text-faint)">${articles.length} artykułów</span>
+        <span id="all-articles-count" style="font-size:.8rem;color:var(--text-faint)">
+          ${articles.length} artykułów${totalSize}
+        </span>
       </div>
       ${articles.length ? `
         <ul class="recent-list" id="all-articles-list">
-          ${articles.map(a => `
-            <li>
-              <a class="all-article-link" data-id="${a.id}">${escHtml(a.title)}</a>
-              <span class="recent-date">${(a.tags||[]).map(t=>`#${t}`).join(' ')}</span>
-            </li>
-          `).join('')}
+          ${articles.map(a => {
+            const size = getArticleCacheSize(a.id);
+            const sizeBadge = size
+              ? `<span class="article-size-badge" title="Rozmiar w pamięci podręcznej">${size}</span>`
+              : '';
+            const tags = (a.tags || []).map(t => `#${t}`).join(' ');
+            return `
+              <li>
+                <a class="all-article-link" data-id="${a.id}">${escHtml(a.title)}</a>
+                <span class="recent-date">${sizeBadge}${tags}</span>
+              </li>`;
+          }).join('')}
         </ul>
       ` : `<div class="empty-state"><div class="empty-icon">📄</div><p>Brak artykułów.</p></div>`}
     </div>
   `;
-
+ 
   document.querySelectorAll('.all-article-link').forEach(el =>
     el.addEventListener('click', () => navigate('article/' + el.dataset.id))
   );
-
+ 
   // Live filter
   const searchInput = document.getElementById('all-articles-search');
   const countEl     = document.getElementById('all-articles-count');
   searchInput?.addEventListener('input', () => {
     const q = searchInput.value.trim().toLowerCase();
     let visible = 0;
+    let visibleBytes = 0;
     document.querySelectorAll('#all-articles-list li').forEach(li => {
       const link = li.querySelector('.all-article-link');
       const match = !q || link.textContent.toLowerCase().includes(q);
       li.style.display = match ? '' : 'none';
-      if (match) visible++;
+      if (match) {
+        visible++;
+        try {
+          const raw = localStorage.getItem('kp_content_' + link.dataset.id);
+          if (raw) visibleBytes += raw.length * 2;
+        } catch {}
+      }
     });
-    countEl.textContent = q ? `${visible} z ${articles.length}` : `${articles.length} artykułów`;
+    const sizeInfo = visibleBytes ? ' · ' + formatBytes(visibleBytes) : '';
+    countEl.textContent = q
+      ? `${visible} z ${articles.length}${sizeInfo}`
+      : `${articles.length} artykułów${totalSize}`;
   });
 }
 
