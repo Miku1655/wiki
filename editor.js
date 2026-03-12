@@ -16,7 +16,7 @@ export function initEditor(navigateCallback) {
 }
 
 /** Renderuje widok edytora */
-export async function renderEditor(articleId, prefillTitle = '') {
+export async function renderEditor(articleId, prefillTitle = '', options = {}) {
   if (!requireAuth()) return;
 
   const main = document.getElementById('main-content');
@@ -99,6 +99,18 @@ Tekst artykułu. Możesz linkować do innych artykułów: [[Nazwa artykułu]]
     if (currentArticle) {
       fillEditorFields(currentArticle);
     }
+  } else if (options.wikiImport && window.__wikiImport) {
+    // Import z Wikipedii
+    currentArticle = null;
+    const wi = window.__wikiImport;
+    window.__wikiImport = null;
+    document.getElementById('editor-title').value = wi.title || '';
+    document.getElementById('editor-textarea').value = wi.content || '';
+    if (wi.infobox?.length) {
+      wi.infobox.forEach(pair => addInfoboxPair(pair.key, pair.value));
+      document.getElementById('editor-infobox').open = true;
+    }
+    showToast(`Zaimportowano „${wi.title}” z Wikipedii`);
   } else {
     currentArticle = null;
     if (prefillTitle) document.getElementById('editor-title').value = prefillTitle;

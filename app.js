@@ -16,6 +16,7 @@ import { initUI, showToast }    from './ui.js';
 import { renderMarkdown }   from './markdown.js';
 import { openTab, updateTabTitle } from './tabs.js';
 import { initPanelManager, closeAll } from './panels.js';
+import { initWikipediaImport } from './wikipedia-modal.js';
 
 // ── INICJALIZACJA ─────────────────────────────────────────
 
@@ -32,6 +33,7 @@ export async function initApp() {
   initHome(navigate);
   initEditor(navigate);
   initUI(navigate);
+  initWikipediaImport(navigate);
 
   // Logo → strona główna
   document.getElementById('logo').addEventListener('click', e => {
@@ -100,7 +102,7 @@ export async function navigate(route, options = {}) {
       break;
 
     case 'editor':
-      await renderEditor(param === 'new' ? null : param, options.prefillTitle);
+      await renderEditor(param === 'new' ? null : param, options.prefillTitle, options);
       break;
 
     case 'history':
