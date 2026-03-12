@@ -370,13 +370,10 @@ body {
 .random-card .random-title { font-family: var(--font-heading); font-size: 1.2rem; }
 
 /* Article view */
-#view-article { padding: 36px 48px; max-width: 100%; }
+#view-article { padding: 36px 48px; width: 100%; box-sizing: border-box; }
 #view-article h1 { font-family: var(--font-heading); font-size: 1.9rem; margin-bottom: 6px; line-height: 1.25; }
 .article-meta { font-size: .8rem; color: var(--text-faint); margin-bottom: 28px; display: flex; gap: 14px; flex-wrap: wrap; }
 .article-meta span { display: flex; align-items: center; gap: 4px; }
-
-/* Wrapper artykułu — ogranicza szerokość tekstu dla czytelności */
-#view-article .md-content { max-width: 780px; }
 
 /* Markdown content */
 .md-content { font-size: .95rem; line-height: 1.75; }
