@@ -58,36 +58,16 @@ export function getCategoryPath(id) {
 
 // ── ZAPIS / USUWANIE ──────────────────────────────────────
 
-export async function saveCategory(cat) {
-  const id = await storageSync(cat);
-  return id;
-}
-
-async function storageSync(cat) {
-  const id = await storageService(cat);
-  const updated = { ...cat, id };
-  const existing = categories.findIndex(c => c.id === id);
-  if (existing >= 0) categories[existing] = updated;
-  else categories.push(updated);
-  saveCategories(categories);
-  return id;
-}
-
-export async function saveCategoryData(cat) {
-  const id = await storageService(cat);
-  const updated = { ...cat, id };
-  const existing = categories.findIndex(c => c.id === id);
-  if (existing >= 0) categories[existing] = updated;
-  else categories.push(updated);
-  saveCategories(categories);
-  return id;
-}
-
-// Bezpośredni zapis przez storage.js
-import { saveCategory as storageSaveRaw } from './storage.js';
-
+/**
+ * Jedyna funkcja zapisu kategorii — przez storage.js do Firebase,
+ * następnie aktualizuje in-memory cache i localStorage.
+ *
+ * Wcześniej istniały trzy duplikaty tej samej logiki:
+ *   saveCategory / saveCategoryData / saveCategoryToStore
+ * — wszystkie zostały zastąpione tą jedną funkcją.
+ */
 export async function saveCategoryToStore(cat) {
-  const id = await storageSaveRaw(cat);
+  const id = await storageSave(cat);
   const updated = { ...cat, id };
   const existing = categories.findIndex(c => c.id === id);
   if (existing >= 0) categories[existing] = updated;
