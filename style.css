@@ -457,35 +457,71 @@ body {
 .wiki-link:hover { border-bottom-color: var(--accent); }
 .wiki-link.missing { color: var(--text-muted); border-bottom-style: dashed; }
 
-/* Editor view */
-#view-editor { display: flex; flex-direction: column; height: 100%; }
-#editor-toolbar {
+/* ── EDYTOR ─────────────────────────────────────────────── */
+#view-editor { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+
+/* Pasek górny: tytuł + akcje */
+#editor-topbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
+  gap: 10px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
-#editor-toolbar input[type="text"] {
+#editor-title {
   font-family: var(--font-heading);
-  font-size: 1.1rem;
+  font-size: 1.15rem;
   border: none;
   background: transparent;
   color: var(--text);
   flex: 1;
-  min-width: 200px;
+  min-width: 180px;
   outline: none;
+  padding: 2px 0;
 }
-#editor-toolbar input[type="text"]::placeholder { color: var(--text-faint); }
-.editor-toolbar-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+#editor-title::placeholder { color: var(--text-faint); }
+#editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.editor-toolbar-sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
 
+/* Status zapisu */
+.save-status { font-size: .75rem; color: var(--text-faint); white-space: nowrap; }
+.save-status.dirty { color: #c0853a; }
+
+/* Przełącznik trybu */
+#editor-mode-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+#editor-mode-toggle button {
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: .9rem;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  line-height: 1;
+  transition: background var(--transition), color var(--transition);
+}
+#editor-mode-toggle button.active { background: var(--accent); color: white; }
+#editor-mode-toggle button:hover:not(.active) { background: var(--bg-hover); color: var(--text); }
+
+/* Pasek meta */
 #editor-meta {
   display: flex;
   gap: 10px;
-  padding: 8px 20px;
+  padding: 6px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-card);
   flex-shrink: 0;
@@ -494,7 +530,7 @@ body {
 }
 #editor-meta input, #editor-meta select {
   font-family: var(--font-ui);
-  font-size: .83rem;
+  font-size: .82rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-panel);
@@ -504,57 +540,18 @@ body {
 }
 #editor-meta input:focus, #editor-meta select:focus { border-color: var(--accent); }
 #editor-meta label { font-size: .78rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+#editor-infobox-toggle { font-size: .78rem; color: var(--text-muted); cursor: pointer; }
+#editor-infobox-toggle summary { list-style: none; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; }
+#editor-infobox-toggle summary:hover { background: var(--bg-hover); }
 
-#editor-body {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
+/* Infobox sekcja */
+#editor-infobox-section {
+  padding: 8px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-shrink: 0;
 }
-#editor-pane, #preview-pane {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px 28px;
-}
-#editor-pane {
-  border-right: 1px solid var(--border);
-}
-#editor-pane.full, #preview-pane.full { flex: 1; }
-#editor-textarea {
-  width: 100%;
-  height: 100%;
-  min-height: 300px;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: .88rem;
-  line-height: 1.7;
-  resize: none;
-  outline: none;
-}
-
-#editor-mode-toggle {
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-#editor-mode-toggle button {
-  padding: 4px 12px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: .8rem;
-  cursor: pointer;
-  font-family: var(--font-ui);
-  transition: background var(--transition), color var(--transition);
-}
-#editor-mode-toggle button.active { background: var(--accent); color: white; }
-
-/* Infobox editor */
-#editor-infobox { padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
-#editor-infobox summary { font-size: .8rem; color: var(--text-muted); cursor: pointer; user-select: none; }
-#infobox-pairs { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+#infobox-pairs { display: flex; flex-direction: column; gap: 5px; }
 .infobox-pair { display: flex; gap: 6px; align-items: center; }
 .infobox-pair input {
   font-family: var(--font-ui);
@@ -567,8 +564,88 @@ body {
   flex: 1;
   outline: none;
 }
-.infobox-pair input:first-child { max-width: 130px; flex: none; color: var(--text-muted); }
-.btn-remove-pair { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: .9rem; }
+.infobox-pair input:first-child { max-width: 140px; flex: none; color: var(--text-muted); }
+.btn-remove-pair { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: .9rem; padding: 2px 5px; border-radius: 3px; }
+.btn-remove-pair:hover { background: var(--bg-hover); color: var(--text); }
+
+/* Toolbar formatowania */
+#editor-format-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.fmt-group { display: flex; gap: 1px; }
+.fmt-sep { width: 1px; height: 20px; background: var(--border); margin: 0 5px; align-self: center; }
+.fmt-btn {
+  padding: 4px 9px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: .82rem;
+  line-height: 1.4;
+  transition: background var(--transition), color var(--transition);
+  white-space: nowrap;
+}
+.fmt-btn:hover { background: var(--bg-hover); color: var(--text); }
+.fmt-btn:active { background: var(--accent-light); color: var(--accent); }
+
+/* Ciało edytora */
+#editor-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+#editor-body[data-mode="split"] #editor-pane,
+#editor-body[data-mode="split"] #preview-pane { flex: 1; }
+#editor-body[data-mode="edit"] #editor-pane,
+#editor-body[data-mode="preview"] #preview-pane { flex: 1; }
+
+#editor-pane { display: flex; flex-direction: column; overflow: hidden; }
+#preview-pane { overflow-y: auto; padding: 24px 32px; }
+#preview-pane-inner { max-width: 700px; }
+
+#editor-divider {
+  width: 4px;
+  background: var(--border);
+  flex-shrink: 0;
+  cursor: col-resize;
+  transition: background var(--transition);
+}
+#editor-divider:hover { background: var(--accent-light); }
+
+#editor-textarea {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: .88rem;
+  line-height: 1.75;
+  resize: none;
+  outline: none;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+/* kbd w przyciskach */
+#editor-actions kbd {
+  font-family: var(--font-mono);
+  font-size: .7rem;
+  opacity: .6;
+  background: rgba(255,255,255,.15);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-left: 4px;
+}
 
 /* History view */
 #view-history { padding: 36px 48px; max-width: 700px; }
