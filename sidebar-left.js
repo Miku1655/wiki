@@ -35,12 +35,27 @@ export function renderCategoryTree() {
 
   if (!tree.length) {
     container.innerHTML = '<div style="padding:10px 14px;font-size:.8rem;color:var(--text-faint)">Brak kategorii.<br>Dodaj pierwszą ↑</div>';
-    return;
+  } else {
+    tree.forEach(node => {
+      container.appendChild(renderNode(node, 0));
+    });
   }
 
-  tree.forEach(node => {
-    container.appendChild(renderNode(node, 0));
+  // Zawsze pokaż "Nieposegregowane" na dole
+  const uncatRow = document.createElement('div');
+  uncatRow.className = 'tree-node-row';
+  uncatRow.style.paddingLeft = '14px';
+  uncatRow.style.marginTop = tree.length ? '4px' : '0';
+  uncatRow.style.borderTop = tree.length ? '1px solid var(--border-light)' : 'none';
+  uncatRow.innerHTML = `
+    <span class="tree-toggle"></span>
+    <span class="tree-icon">📋</span>
+    <span class="tree-label" style="color:var(--text-muted)">Nieposegregowane</span>
+  `;
+  uncatRow.addEventListener('click', () => {
+    if (navigateFn) navigateFn('category/__uncategorized__');
   });
+  container.appendChild(uncatRow);
 }
 
 function renderNode(node, depth) {

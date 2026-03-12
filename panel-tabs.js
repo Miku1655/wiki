@@ -1,49 +1,28 @@
 // panel-tabs.js — Wysuwany panel listy kart
 
 import { getTabs, getActiveTabId, closeTab, switchTab, onTabsChange } from './tabs.js';
+import { openPanel, closePanel, isOpen } from './panels.js';
 
 let navigateFn = null;
 
 export function initTabsPanel(navigateCallback) {
   navigateFn = navigateCallback;
 
-  const btnOpen  = document.getElementById('btn-tabs-panel');
-  const btnClose = document.getElementById('btn-close-tabs-panel');
-  const panel    = document.getElementById('panel-tabs');
-  const overlay  = document.getElementById('panel-overlay');
+  document.getElementById('btn-tabs-panel').addEventListener('click', () => {
+    isOpen('tabs') ? closePanel('tabs') : showPanel();
+  });
+  document.getElementById('btn-close-tabs-panel').addEventListener('click', () => closePanel('tabs'));
 
-  btnOpen.addEventListener('click', () => togglePanel());
-  btnClose.addEventListener('click', () => hidePanel());
-  overlay.addEventListener('click', () => hidePanel());
-
-  // Aktualizuj listę przy każdej zmianie kart
   onTabsChange(renderTabs);
 }
 
 export function showPanel() {
-  const panel = document.getElementById('panel-tabs');
-  const overlay = document.getElementById('panel-overlay');
-  panel.classList.remove('hidden');
-  requestAnimationFrame(() => panel.classList.add('visible'));
-  overlay.classList.remove('hidden');
+  openPanel('tabs');
   renderTabs();
 }
 
 export function hidePanel() {
-  const panel = document.getElementById('panel-tabs');
-  const overlay = document.getElementById('panel-overlay');
-  panel.classList.remove('visible');
-  setTimeout(() => panel.classList.add('hidden'), 240);
-  overlay.classList.add('hidden');
-}
-
-function togglePanel() {
-  const panel = document.getElementById('panel-tabs');
-  if (panel.classList.contains('hidden') || !panel.classList.contains('visible')) {
-    showPanel();
-  } else {
-    hidePanel();
-  }
+  closePanel('tabs');
 }
 
 function renderTabs() {
@@ -69,7 +48,7 @@ function renderTabs() {
       const route = switchTab(el.dataset.id);
       if (route && navigateFn) {
         navigateFn(route);
-        hidePanel();
+        closePanel('tabs');
       }
     });
   });

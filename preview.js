@@ -2,6 +2,7 @@
 
 import { getArticleFull, getArticleByTitle } from './articles.js';
 import { renderMarkdown } from './markdown.js';
+import { openPanel, closePanel } from './panels.js';
 
 let navigateFn = null;
 let currentArticleId = null;
@@ -23,40 +24,25 @@ export function initPreview(navigateCallback) {
 }
 
 export async function showPreview(articleId, articleTitle) {
-  // Normalizuj — pusty string traktuj jak brak id
   articleId = articleId || null;
 
-  // Jeśli nie mamy id ale mamy tytuł — spróbuj znaleźć artykuł po tytule
   if (!articleId && articleTitle) {
     const found = getArticleByTitle(articleTitle);
     if (found) articleId = found.id;
   }
 
-  // Ustaw currentArticleId dopiero po rozwiązaniu — przyciski Otwórz/Nowa karta będą miały poprawne id
   currentArticleId = articleId;
-  const panel = document.getElementById('panel-preview');
-  const overlay = document.getElementById('panel-overlay');
-  const titleEl = document.getElementById('preview-title');
+
+  const titleEl   = document.getElementById('preview-title');
   const contentEl = document.getElementById('preview-content');
 
   titleEl.textContent = articleTitle || 'Podgląd';
   contentEl.innerHTML = '<div class="loading-spinner"><div class="spinner"></div> Ładowanie…</div>';
 
-  // Ukryj panel kart jeśli otwarty
-  const tabsPanel = document.getElementById('panel-tabs');
-  if (tabsPanel.classList.contains('visible')) {
-    tabsPanel.classList.remove('visible');
-    setTimeout(() => tabsPanel.classList.add('hidden'), 240);
-  }
+  openPanel('preview');
 
-  panel.classList.remove('hidden');
-  requestAnimationFrame(() => panel.classList.add('visible'));
-  overlay.classList.remove('hidden');
-
-  // Pokaż przyciski tylko jeśli artykuł istnieje
-  const hasId = !!articleId;
-  document.getElementById('btn-preview-open').style.display = hasId ? '' : 'none';
-  document.getElementById('btn-preview-new-tab').style.display = hasId ? '' : 'none';
+  document.getElementById('btn-preview-open').style.display    = articleId ? '' : 'none';
+  document.getElementById('btn-preview-new-tab').style.display = articleId ? '' : 'none';
 
   if (!articleId) {
     contentEl.innerHTML = `<div class="empty-state">
@@ -77,16 +63,13 @@ export async function showPreview(articleId, articleTitle) {
       contentEl.innerHTML = '<div class="empty-state"><p>Nie znaleziono artykułu.</p></div>';
       return;
     }
-    // Renderuj pierwsze ~1500 znaków jako podgląd
     const previewContent = (article.content || '').slice(0, 1500);
     const html = renderMarkdown(previewContent);
     contentEl.innerHTML = `<div class="md-content">${html}${article.content?.length > 1500 ? '<p class="text-muted">…</p>' : ''}</div>`;
-    // Wiki-linki w podglądzie też działają
     contentEl.querySelectorAll('.wiki-link').forEach(el => {
-      el.addEventListener('click', () => {
-        const id = el.dataset.articleId;
-        const title = el.dataset.articleTitle;
-        showPreview(id, title);
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        showPreview(el.dataset.articleId || null, el.dataset.articleTitle);
       });
     });
   } catch(e) {
@@ -96,11 +79,7 @@ export async function showPreview(articleId, articleTitle) {
 }
 
 export function hidePreview() {
-  const panel = document.getElementById('panel-preview');
-  const overlay = document.getElementById('panel-overlay');
-  panel.classList.remove('visible');
-  setTimeout(() => panel.classList.add('hidden'), 240);
-  overlay.classList.add('hidden');
+  closePanel('preview');
   currentArticleId = null;
 }
 

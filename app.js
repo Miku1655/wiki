@@ -15,6 +15,7 @@ import { renderEditor, initEditor } from './editor.js';
 import { initUI, showToast }    from './ui.js';
 import { renderMarkdown }   from './markdown.js';
 import { openTab, updateTabTitle } from './tabs.js';
+import { initPanelManager, closeAll } from './panels.js';
 
 // ── INICJALIZACJA ─────────────────────────────────────────
 
@@ -25,6 +26,7 @@ export async function initApp() {
   initSidebarRight(navigate);
   initTabsPanel(navigate);
   initTagsPanel(navigate);
+  initPanelManager();
   initPreview(navigate);
   initHistory(navigate);
   initHome(navigate);
@@ -77,6 +79,9 @@ export async function navigate(route, options = {}) {
   const parts = route.split('/');
   const view  = parts[0];
   const param = parts.slice(1).join('/');
+
+  // Zamknij panele przy każdej nawigacji (nie przy podglądzie)
+  if (view !== 'preview') closeAll();
 
   // Obsługa nowej karty
   if (options.newTab && view === 'article') {
@@ -194,17 +199,20 @@ async function renderArticle(id, hash = '') {
 // ── WIDOK KATEGORII ───────────────────────────────────────
 
 function renderCategoryView(categoryId) {
-  const { filterByCategory } = window.__searchFilter || {};
-  const articles = getAllMeta().filter(a => a.category === categoryId);
   const main = document.getElementById('main-content');
   clearSidebarRight();
 
-  // Importujemy getCategoryName dynamicznie z modułu
+  const isUncategorized = categoryId === '__uncategorized__';
+  const articles = isUncategorized
+    ? getAllMeta().filter(a => !a.category)
+    : getAllMeta().filter(a => a.category === categoryId);
+
   import('./categories.js').then(({ getCategoryName }) => {
-    const catName = getCategoryName(categoryId);
+    const catName = isUncategorized ? 'Nieposegregowane' : getCategoryName(categoryId);
+    const icon    = isUncategorized ? '📋' : '📁';
     main.innerHTML = `
       <div id="view-home" style="padding:36px 48px">
-        <h1 style="font-family:var(--font-heading);font-size:1.7rem;margin-bottom:20px">📁 ${escHtml(catName)}</h1>
+        <h1 style="font-family:var(--font-heading);font-size:1.7rem;margin-bottom:20px">${icon} ${escHtml(catName)}</h1>
         ${articles.length ? `
           <ul class="recent-list">
             ${articles.map(a => `
@@ -214,7 +222,7 @@ function renderCategoryView(categoryId) {
               </li>
             `).join('')}
           </ul>
-        ` : `<div class="empty-state"><div class="empty-icon">📂</div><p>Brak artykułów w tej kategorii.</p></div>`}
+        ` : `<div class="empty-state"><div class="empty-icon">📂</div><p>Brak artykułów${isUncategorized ? ' bez kategorii' : ' w tej kategorii'}.</p></div>`}
       </div>
     `;
     document.querySelectorAll('.cat-article').forEach(el => {

@@ -1,45 +1,26 @@
 // panel-tags.js — Wysuwany panel przeglądania tagów
 
 import { getAllTags } from './tags.js';
+import { openPanel, closePanel, isOpen } from './panels.js';
 
 let navigateFn = null;
 
 export function initTagsPanel(navigateCallback) {
   navigateFn = navigateCallback;
 
-  const btnOpen  = document.getElementById('btn-tags-panel');
-  const btnClose = document.getElementById('btn-close-tags-panel');
-  const overlay  = document.getElementById('panel-overlay');
-
-  btnOpen.addEventListener('click', () => togglePanel());
-  btnClose.addEventListener('click', () => hidePanel());
-  overlay.addEventListener('click', () => hidePanel());
+  document.getElementById('btn-tags-panel').addEventListener('click', () => {
+    isOpen('tags') ? closePanel('tags') : showTagsPanel();
+  });
+  document.getElementById('btn-close-tags-panel').addEventListener('click', () => closePanel('tags'));
 }
 
 export function showTagsPanel() {
-  const panel = document.getElementById('panel-tags-list');
-  const overlay = document.getElementById('panel-overlay');
-  panel.classList.remove('hidden');
-  requestAnimationFrame(() => panel.classList.add('visible'));
-  overlay.classList.remove('hidden');
+  openPanel('tags');
   renderTagsList();
 }
 
 export function hidePanel() {
-  const panel = document.getElementById('panel-tags-list');
-  const overlay = document.getElementById('panel-overlay');
-  panel.classList.remove('visible');
-  setTimeout(() => panel.classList.add('hidden'), 240);
-  overlay.classList.add('hidden');
-}
-
-function togglePanel() {
-  const panel = document.getElementById('panel-tags-list');
-  if (panel.classList.contains('hidden') || !panel.classList.contains('visible')) {
-    showTagsPanel();
-  } else {
-    hidePanel();
-  }
+  closePanel('tags');
 }
 
 function renderTagsList() {
@@ -51,7 +32,6 @@ function renderTagsList() {
     return;
   }
 
-  // Pole wyszukiwania
   container.innerHTML = `
     <div style="padding:10px 14px 6px">
       <input type="text" id="tags-panel-search" placeholder="Filtruj tagi…"
@@ -75,7 +55,7 @@ function renderTagsList() {
 
     listEl.querySelectorAll('.tag-panel-item').forEach(el => {
       el.addEventListener('click', () => {
-        hidePanel();
+        closePanel('tags');
         navigateFn('tag/' + el.dataset.tag);
       });
     });
