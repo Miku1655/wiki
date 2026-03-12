@@ -2,7 +2,7 @@
 
 import { initTheme }        from './theme.js';
 import { initAuth, onAuthChange, getUser } from './auth.js';
-import { loadArticlesMeta, getArticleFull, getAllMeta, getMetaById } from './articles.js';
+import { loadArticlesMeta, getArticleFull, getAllMeta, getMetaById, saveArticle } from './articles.js';
 import { loadCategoriesData }  from './categories.js';
 import { initSidebarLeft, renderCategoryTree } from './sidebar-left.js';
 import { initSidebarRight, renderSidebarRight, clearSidebarRight } from './sidebar-right.js';
@@ -38,19 +38,16 @@ export async function initApp() {
   initWikipediaImport(navigate);
   initPathsPanel(navigate);
 
-  // Logo → strona główna
   document.getElementById('logo').addEventListener('click', e => {
     e.preventDefault();
     navigate('home');
   });
 
-  // Reaguj na logowanie
   onAuthChange(async user => {
     if (user) {
       await loadData();
       navigate('home');
     } else {
-      // Pokaż modal logowania
       document.getElementById('modal-auth').classList.remove('hidden');
     }
   });
@@ -71,14 +68,6 @@ async function loadData() {
 
 // ── ROUTING ───────────────────────────────────────────────
 
-/**
- * Nawigacja po aplikacji.
- * route: 'home' | 'article/:id' | 'editor/:id' | 'history' | 'category/:id' | 'tag/:name'
- * options: { newTab, prefillTitle }
- */
-// Czy nawigacja pochodzi z wnętrza artykułu (wiki-link)?
-// true  → nawiguj w tej samej karcie
-// false → otwórz nową kartę (nawigacja z zewnątrz: sidebar, search, home…)
 let _navigatingFromArticle = false;
 
 export function navigateFromArticle(route, options = {}) {
@@ -96,21 +85,17 @@ export async function navigate(route, options = {}) {
 
   if (view !== 'preview') closeAll();
 
-  // ── Logika kart ──────────────────────────────────────────
-  // Artykuł otwierany z zewnątrz (sidebar, home, search) → nowa karta
-  // Artykuł otwierany przez wiki-link wewnątrz artykułu  → ta sama karta
-  // Jawne "nowa karta" (przycisk ↗)                       → zawsze nowa
   if (view === 'article') {
     const title = getMetaById(param)?.title || 'Artykuł';
     if (options.newTab) {
-      openNewTab(route, title);                 // jawna nowa karta
+      openNewTab(route, title);
     } else if (_navigatingFromArticle || options.fromPreview) {
-      navigateTab(route, title);                // ta sama karta (wiki-link lub podgląd → otwórz)
+      navigateTab(route, title);
     } else {
-      openNewTab(route, title);                 // nowa karta (z zewnątrz)
+      openNewTab(route, title);
     }
   }
-  _navigatingFromArticle = false; // reset po użyciu
+  _navigatingFromArticle = false;
 
   switch(view) {
     case 'home':
@@ -133,6 +118,10 @@ export async function navigate(route, options = {}) {
 
     case 'category':
       renderCategoryView(param);
+      break;
+
+    case 'all-articles':
+      renderAllArticlesView();
       break;
 
     case 'tag':
@@ -169,12 +158,11 @@ async function renderArticle(id, hash = '') {
     return;
   }
 
-  // Loguj w historii
   logView(id, article.title);
 
   const html = renderMarkdown(article.content || '');
-
   const bookmarked = isBookmarked(id);
+
   main.innerHTML = `
     <div id="article-actions">
       <button class="btn-small" id="btn-edit-article">✎ Edytuj</button>
@@ -198,7 +186,6 @@ async function renderArticle(id, hash = '') {
     </div>
   `;
 
-  // Akcje
   document.getElementById('btn-edit-article').addEventListener('click', () => {
     navigate('editor/' + id);
   });
@@ -206,7 +193,6 @@ async function renderArticle(id, hash = '') {
     navigate('article/' + id, { newTab: true });
     showToast('Otwarto w nowej karcie');
   });
-
   document.getElementById('btn-bookmark-article').addEventListener('click', () => {
     const added = toggleBookmark(id, article.title);
     const btn = document.getElementById('btn-bookmark-article');
@@ -216,11 +202,9 @@ async function renderArticle(id, hash = '') {
     showToast(added ? 'Dodano do zakładek ⭐' : 'Usunięto zakładkę');
   });
 
-  // Wiki-linki → podgląd (lewy klik) lub nawigacja w tej samej karcie (Ctrl+klik)
   document.querySelectorAll('.wiki-link').forEach(el => {
     el.addEventListener('click', (e) => {
       if (e.ctrlKey || e.metaKey) {
-        // Ctrl+klik → nowa karta
         if (el.dataset.articleId) navigate('article/' + el.dataset.articleId, { newTab: true });
         return;
       }
@@ -228,20 +212,70 @@ async function renderArticle(id, hash = '') {
     });
   });
 
-  // Renderuj prawy panel
   renderSidebarRight(article);
 
-  // Widget ścieżek czytania w action barze
   const pathWidget = renderArticlePathWidget(id, article.title);
   document.getElementById('article-actions').appendChild(pathWidget);
 
-  // Przewiń do sekcji jeśli jest hash
   if (hash) {
     setTimeout(() => {
       const heading = document.querySelector(`#view-article [id="${CSS.escape(decodeURIComponent(hash))}"]`);
       if (heading) heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
   }
+}
+
+// ── WIDOK WSZYSTKICH ARTYKUŁÓW ────────────────────────────
+
+function renderAllArticlesView() {
+  const main = document.getElementById('main-content');
+  clearSidebarRight();
+
+  const articles = [...getAllMeta()].sort((a, b) =>
+    (a.title || '').localeCompare(b.title || '', 'pl')
+  );
+
+  main.innerHTML = `
+    <div id="view-home" style="padding:36px 48px;max-width:860px">
+      <h1 style="font-family:var(--font-heading);font-size:1.7rem;margin-bottom:20px">📄 Wszystkie artykuły</h1>
+      <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <input type="text" id="all-articles-search" placeholder="Filtruj…"
+          style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
+                 background:var(--bg-panel);color:var(--text);font-family:var(--font-ui);
+                 font-size:.88rem;outline:none;min-width:200px"/>
+        <span id="all-articles-count" style="font-size:.8rem;color:var(--text-faint)">${articles.length} artykułów</span>
+      </div>
+      ${articles.length ? `
+        <ul class="recent-list" id="all-articles-list">
+          ${articles.map(a => `
+            <li>
+              <a class="all-article-link" data-id="${a.id}">${escHtml(a.title)}</a>
+              <span class="recent-date">${(a.tags||[]).map(t=>`#${t}`).join(' ')}</span>
+            </li>
+          `).join('')}
+        </ul>
+      ` : `<div class="empty-state"><div class="empty-icon">📄</div><p>Brak artykułów.</p></div>`}
+    </div>
+  `;
+
+  document.querySelectorAll('.all-article-link').forEach(el =>
+    el.addEventListener('click', () => navigate('article/' + el.dataset.id))
+  );
+
+  // Live filter
+  const searchInput = document.getElementById('all-articles-search');
+  const countEl     = document.getElementById('all-articles-count');
+  searchInput?.addEventListener('input', () => {
+    const q = searchInput.value.trim().toLowerCase();
+    let visible = 0;
+    document.querySelectorAll('#all-articles-list li').forEach(li => {
+      const link = li.querySelector('.all-article-link');
+      const match = !q || link.textContent.toLowerCase().includes(q);
+      li.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    countEl.textContent = q ? `${visible} z ${articles.length}` : `${articles.length} artykułów`;
+  });
 }
 
 // ── WIDOK KATEGORII ───────────────────────────────────────
@@ -253,11 +287,11 @@ function renderCategoryView(categoryId) {
   const isUncategorized = categoryId === '__uncategorized__';
 
   import('./categories.js').then(({ getCategoryName, getAllCategories }) => {
+    const allArticles = getAllMeta();
     const articles = isUncategorized
-      ? getAllMeta().filter(a => !a.category)
-      : getAllMeta().filter(a => a.category === categoryId);
+      ? allArticles.filter(a => !a.category)
+      : allArticles.filter(a => a.category === categoryId);
 
-    // Podkategorie (tylko dla prawdziwych kategorii)
     const subcats = isUncategorized
       ? []
       : getAllCategories().filter(c => c.parentId === categoryId);
@@ -265,7 +299,6 @@ function renderCategoryView(categoryId) {
     const catName = isUncategorized ? 'Nieposegregowane' : getCategoryName(categoryId);
     const icon    = isUncategorized ? '📋' : '📁';
 
-    // Breadcrumb — ścieżka do bieżącej kategorii
     const buildBreadcrumb = (id) => {
       if (!id || isUncategorized) return '';
       const path = [];
@@ -283,10 +316,40 @@ function renderCategoryView(categoryId) {
       </div>`;
     };
 
+    // Bulk-edit toolbar (ukryty dopóki nie zaznaczono)
+    const bulkToolbarHtml = `
+      <div id="bulk-toolbar" class="bulk-toolbar hidden">
+        <span id="bulk-count">0 zaznaczonych</span>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:.8rem;color:var(--text-muted)">Kategoria:
+            <select id="bulk-category-select" style="margin-left:4px;font-size:.8rem;
+              border:1px solid var(--border);border-radius:var(--radius-sm);
+              background:var(--bg-panel);color:var(--text);padding:3px 6px;outline:none">
+              <option value="">— bez zmian —</option>
+              <option value="__clear__">— usuń kategorię —</option>
+            </select>
+          </label>
+          <label style="font-size:.8rem;color:var(--text-muted)">Dodaj tagi:
+            <input type="text" id="bulk-tags-input" placeholder="tag1, tag2"
+              style="margin-left:4px;font-size:.8rem;border:1px solid var(--border);
+                     border-radius:var(--radius-sm);background:var(--bg-panel);
+                     color:var(--text);padding:3px 8px;outline:none;width:140px"/>
+          </label>
+          <button class="btn-primary" id="btn-bulk-apply" style="font-size:.8rem;padding:5px 14px">Zastosuj</button>
+          <button class="btn-ghost"   id="btn-bulk-cancel" style="font-size:.8rem;padding:5px 10px">Anuluj</button>
+        </div>
+      </div>
+    `;
+
     main.innerHTML = `
       <div id="view-home" style="padding:36px 48px;max-width:860px">
         ${buildBreadcrumb(categoryId)}
-        <h1 style="font-family:var(--font-heading);font-size:1.7rem;margin-bottom:20px">${icon} ${escHtml(catName)}</h1>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
+          <h1 style="font-family:var(--font-heading);font-size:1.7rem">${icon} ${escHtml(catName)}</h1>
+          ${articles.length >= 2 ? `<button class="btn-small" id="btn-toggle-bulk">☑ Zaznacz wiele</button>` : ''}
+        </div>
+
+        ${bulkToolbarHtml}
 
         ${subcats.length ? `
           <h3 style="font-family:var(--font-heading);font-size:1rem;font-weight:400;font-style:italic;
@@ -296,7 +359,7 @@ function renderCategoryView(categoryId) {
               <div class="subcat-card cat-nav" data-id="${c.id}">
                 <span class="subcat-icon">📁</span>
                 <span class="subcat-name">${escHtml(c.name)}</span>
-                <span class="subcat-count">${getAllMeta().filter(a => a.category === c.id).length} art.</span>
+                <span class="subcat-count">${allArticles.filter(a => a.category === c.id).length} art.</span>
               </div>
             `).join('')}
           </div>
@@ -308,9 +371,12 @@ function renderCategoryView(categoryId) {
                      color:var(--text-muted);margin-bottom:10px">
             Artykuły (${articles.length})
           </h3>
-          <ul class="recent-list">
+          <ul class="recent-list" id="cat-articles-list">
             ${articles.map(a => `
-              <li>
+              <li data-article-id="${a.id}">
+                <label class="bulk-checkbox-wrap hidden">
+                  <input type="checkbox" class="bulk-checkbox" data-id="${a.id}" />
+                </label>
                 <a class="cat-article" data-id="${a.id}">${escHtml(a.title)}</a>
                 <span class="recent-date">${(a.tags||[]).map(t=>`#${t}`).join(' ')}</span>
               </li>
@@ -321,12 +387,89 @@ function renderCategoryView(categoryId) {
       </div>
     `;
 
+    // Wypełnij select kategorii
+    import('./categories.js').then(({ getCategoryOptions }) => {
+      const sel = document.getElementById('bulk-category-select');
+      if (!sel) return;
+      getCategoryOptions().forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt.id; o.textContent = opt.name;
+        sel.appendChild(o);
+      });
+    });
+
+    // Klik w artykuł
     document.querySelectorAll('.cat-article').forEach(el =>
       el.addEventListener('click', () => navigate('article/' + el.dataset.id)));
     document.querySelectorAll('.cat-nav').forEach(el =>
       el.addEventListener('click', () => navigate('category/' + el.dataset.id)));
     document.querySelectorAll('.cat-bc-link').forEach(el =>
       el.addEventListener('click', () => navigate('category/' + el.dataset.id)));
+
+    // ── Bulk-edit logic ───────────────────────────────────
+
+    let bulkMode = false;
+
+    const bulkToolbar  = document.getElementById('bulk-toolbar');
+    const bulkCountEl  = document.getElementById('bulk-count');
+    const btnToggle    = document.getElementById('btn-toggle-bulk');
+
+    function updateBulkCount() {
+      const n = document.querySelectorAll('.bulk-checkbox:checked').length;
+      if (bulkCountEl) bulkCountEl.textContent = `${n} zaznaczonych`;
+      if (bulkToolbar) bulkToolbar.classList.toggle('hidden', n === 0);
+    }
+
+    btnToggle?.addEventListener('click', () => {
+      bulkMode = !bulkMode;
+      btnToggle.textContent = bulkMode ? '✕ Anuluj zaznaczanie' : '☑ Zaznacz wiele';
+      document.querySelectorAll('.bulk-checkbox-wrap').forEach(el =>
+        el.classList.toggle('hidden', !bulkMode));
+      if (!bulkMode) {
+        document.querySelectorAll('.bulk-checkbox').forEach(cb => cb.checked = false);
+        if (bulkToolbar) bulkToolbar.classList.add('hidden');
+      }
+    });
+
+    document.querySelectorAll('.bulk-checkbox').forEach(cb =>
+      cb.addEventListener('change', updateBulkCount));
+
+    document.getElementById('btn-bulk-cancel')?.addEventListener('click', () => {
+      document.querySelectorAll('.bulk-checkbox').forEach(cb => cb.checked = false);
+      updateBulkCount();
+    });
+
+    document.getElementById('btn-bulk-apply')?.addEventListener('click', async () => {
+      const checked = [...document.querySelectorAll('.bulk-checkbox:checked')];
+      if (!checked.length) return;
+
+      const newCatRaw = document.getElementById('bulk-category-select')?.value;
+      const newCat    = newCatRaw === '__clear__' ? '' : (newCatRaw || null);
+      const tagsRaw   = document.getElementById('bulk-tags-input')?.value || '';
+      const addTags   = tagsRaw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+
+      const ids = checked.map(cb => cb.dataset.id);
+
+      const btn = document.getElementById('btn-bulk-apply');
+      btn.textContent = 'Zapisuję…'; btn.disabled = true;
+
+      try {
+        await Promise.all(ids.map(async id => {
+          const full = await getArticleFull(id);
+          if (!full) return;
+          const updatedTags = addTags.length
+            ? [...new Set([...(full.tags || []), ...addTags])]
+            : full.tags || [];
+          const updatedCat = newCat !== null ? newCat : full.category;
+          await saveArticle({ ...full, category: updatedCat, tags: updatedTags });
+        }));
+        showToast(`Zaktualizowano ${ids.length} artykułów ✓`);
+        renderCategoryView(categoryId);
+      } catch(e) {
+        showToast('Błąd zapisu: ' + e.message);
+        btn.textContent = 'Zastosuj'; btn.disabled = false;
+      }
+    });
   });
 }
 
@@ -359,7 +502,6 @@ function renderTagView(tag) {
 // ── HELPERS ───────────────────────────────────────────────
 
 function getCatName(id) {
-  // Synchroniczny dostęp z cache kategorii
   try {
     const cats = JSON.parse(localStorage.getItem('kp_categories') || '[]');
     return cats.find(c => c.id === id)?.name || id;

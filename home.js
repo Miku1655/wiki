@@ -29,20 +29,14 @@ export function renderHome() {
   bindEvents();
 }
 
-// ── BUILDER FUNCTIONS (bez zagnieżdżonych template literals) ──
+// ── BUILDER FUNCTIONS ─────────────────────────────────────
 
 function buildHome({ meta, recent, cats, tags, topTags, random, bookmarks, paths }) {
   const parts = [];
 
   parts.push('<div id="view-home">');
-
-  // Header
   parts.push(buildHeader(random));
-
-  // Stats bar
   parts.push(buildStatsBar(meta, cats, tags, bookmarks, paths));
-
-  // Grid
   parts.push('<div class="home-grid">');
   parts.push(buildBookmarksCard(bookmarks));
   if (paths.length) parts.push(buildPathsCard(paths, meta));
@@ -50,7 +44,6 @@ function buildHome({ meta, recent, cats, tags, topTags, random, bookmarks, paths
   if (cats.length)    parts.push(buildCatsCard(cats, meta));
   if (topTags.length) parts.push(buildTagsCard(topTags));
   parts.push('</div>'); // .home-grid
-
   parts.push('</div>'); // #view-home
   return parts.join('');
 }
@@ -127,7 +120,8 @@ function buildPathsCard(paths, meta) {
   return '<div class="home-card" style="grid-column:1/-1">'
     + '<div class="home-card-header">'
     + '<h3>🗺 Ścieżki czytania</h3>'
-    + '<button class="btn-small" id="btn-open-paths-home">Wszystkie</button>'
+    // data-action="open-paths" zamiast id — event delegowany w bindEvents
+    + '<button class="btn-small" data-action="open-paths">Wszystkie</button>'
     + '</div>'
     + '<div class="home-paths-row">' + cards + '</div>'
     + '</div>';
@@ -153,11 +147,14 @@ function buildRecentCard(recent) {
 }
 
 function buildCatsCard(cats, meta) {
+  // Zbuduj mapę liczby artykułów raz (zamiast osobnego .filter per kategorię)
+  const countMap = {};
+  meta.forEach(function(a) { if (a.category) countMap[a.category] = (countMap[a.category] || 0) + 1; });
+
   const chips = cats.slice(0, 10).map(function(c) {
-    const count = meta.filter(function(a) { return a.category === c.id; }).length;
     return '<div class="home-cat-chip cat-nav" data-id="' + c.id + '">'
       + escHtml(c.name)
-      + '<span class="home-cat-count">' + count + '</span>'
+      + '<span class="home-cat-count">' + (countMap[c.id] || 0) + '</span>'
       + '</div>';
   }).join('');
   return '<div class="home-card">'
@@ -187,7 +184,11 @@ function bindEvents() {
     if (r) navigateFn('article/' + r.id);
   });
 
-  document.getElementById('btn-open-paths-home')?.addEventListener('click', function() {
+  // POPRAWKA: stopPropagation zapobiega bubble'owaniu do #main-content,
+  // który w panels.js ma listener zamykający wszystkie panele.
+  const btnPaths = document.querySelector('[data-action="open-paths"]');
+  btnPaths?.addEventListener('click', function(e) {
+    e.stopPropagation();
     import('./panel-paths.js').then(function(m) { m.openPathsPanel(); });
   });
 

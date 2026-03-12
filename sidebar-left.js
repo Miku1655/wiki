@@ -10,17 +10,14 @@ let openNodes = new Set();
 export function initSidebarLeft(navigateCallback) {
   navigateFn = navigateCallback;
 
-  // Toggle sidebar
   document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
     document.getElementById('sidebar-left').classList.toggle('collapsed');
   });
 
-  // New category button
   document.getElementById('btn-new-category').addEventListener('click', () => {
     openCategoryModal(null);
   });
 
-  // Category modal save
   document.getElementById('btn-category-save').addEventListener('click', saveCategoryFromModal);
   document.getElementById('btn-category-cancel').addEventListener('click', closeCategoryModal);
   document.getElementById('modal-category').addEventListener('click', e => {
@@ -41,7 +38,7 @@ export function renderCategoryTree() {
     });
   }
 
-  // Zawsze pokaż "Nieposegregowane" na dole
+  // "Nieposegregowane" — artykuły bez kategorii
   const uncatRow = document.createElement('div');
   uncatRow.className = 'tree-node-row';
   uncatRow.style.paddingLeft = '14px';
@@ -56,6 +53,21 @@ export function renderCategoryTree() {
     if (navigateFn) navigateFn('category/__uncategorized__');
   });
   container.appendChild(uncatRow);
+
+  // "Wszystkie artykuły" — na samym dole
+  const allRow = document.createElement('div');
+  allRow.className = 'tree-node-row';
+  allRow.style.paddingLeft = '14px';
+  allRow.style.borderTop = '1px solid var(--border-light)';
+  allRow.innerHTML = `
+    <span class="tree-toggle"></span>
+    <span class="tree-icon">📄</span>
+    <span class="tree-label" style="color:var(--text-muted)">Wszystkie artykuły</span>
+  `;
+  allRow.addEventListener('click', () => {
+    if (navigateFn) navigateFn('all-articles');
+  });
+  container.appendChild(allRow);
 }
 
 function renderNode(node, depth) {
@@ -78,7 +90,6 @@ function renderNode(node, depth) {
   label.className = 'tree-label';
   label.textContent = node.name;
 
-  // Context menu - right click
   row.addEventListener('contextmenu', e => {
     e.preventDefault();
     openCategoryModal(node);
@@ -90,7 +101,6 @@ function renderNode(node, depth) {
       else openNodes.add(node.id);
       renderCategoryTree();
     }
-    // Filtruj artykuły po kategorii
     if (navigateFn) navigateFn('category/' + node.id);
   });
 
@@ -129,11 +139,10 @@ function openCategoryModal(existingCategory) {
   titleEl.textContent = existingCategory ? 'Edytuj kategorię' : 'Nowa kategoria';
   nameInput.value = existingCategory?.name || '';
 
-  // Wypełnij select kategorii nadrzędnych
   const options = getCategoryOptions();
   parentSelect.innerHTML = '<option value="">— brak (główna) —</option>';
   options.forEach(opt => {
-    if (existingCategory && opt.id === existingCategory.id) return; // nie można być swoim własnym rodzicem
+    if (existingCategory && opt.id === existingCategory.id) return;
     const o = document.createElement('option');
     o.value = opt.id;
     o.textContent = opt.name;

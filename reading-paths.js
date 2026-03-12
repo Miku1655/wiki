@@ -39,13 +39,23 @@ export function deletePath(id) {
   saveAll(loadAll().filter(p => p.id !== id));
 }
 
-/** Dodaje artykuł do ścieżki (na koniec lub przed wskazanym indeksem) */
+/**
+ * Dodaje artykuł do ścieżki.
+ * articleId może być null — wtedy element jest placeholderem
+ * (artykuł jeszcze nie istnieje w kompendium).
+ */
 export function addItemToPath(pathId, articleId, articleTitle) {
   const paths = loadAll();
   const path  = paths.find(p => p.id === pathId);
   if (!path) return;
-  if (path.items.some(i => i.articleId === articleId)) return; // już jest
-  path.items.push({ articleId, title: articleTitle, status: 'todo', addedAt: new Date().toISOString() });
+  // Nie dodawaj duplikatów (tylko dla prawdziwych artykułów)
+  if (articleId && path.items.some(i => i.articleId === articleId)) return;
+  path.items.push({
+    articleId: articleId || null,
+    title:     articleTitle,
+    status:    'todo',
+    addedAt:   new Date().toISOString()
+  });
   saveAll(paths);
 }
 
@@ -57,12 +67,18 @@ export function removeItemFromPath(pathId, articleId) {
   saveAll(paths);
 }
 
-/** Zmień status: 'todo' | 'reading' | 'done' */
-export function setItemStatus(pathId, articleId, status) {
+/**
+ * Zmień status artykułu: 'todo' | 'reading' | 'done'
+ * Obsługuje zarówno wyszukiwanie po articleId jak i po tytule
+ * (dla placeholderów bez articleId).
+ */
+export function setItemStatus(pathId, articleId, status, fallbackTitle) {
   const paths = loadAll();
   const path  = paths.find(p => p.id === pathId);
   if (!path) return;
-  const item  = path.items.find(i => i.articleId === articleId);
+  const item = articleId
+    ? path.items.find(i => i.articleId === articleId)
+    : path.items.find(i => !i.articleId && i.title === fallbackTitle);
   if (item) item.status = status;
   saveAll(paths);
 }
@@ -80,30 +96,34 @@ export function moveItem(pathId, articleId, direction) {
   saveAll(paths);
 }
 
-/** Importuje listę artykułów (np. wygenerowaną przez AI) */
+/** Importuje listę artykułów (np. wygenerowaną przez AI).
+ *  Akceptuje zarówno artykuły z id jak i placeholdery (articleId: null). */
 export function importPathItems(pathId, items) {
-  // items: [{ articleId, title }] lub [{ title }] jeśli artykuły jeszcze nie istnieją
   const paths = loadAll();
   const path  = paths.find(p => p.id === pathId);
   if (!path) return;
   items.forEach(item => {
-    if (!path.items.some(i => i.articleId === item.articleId && item.articleId)) {
-      path.items.push({
-        articleId: item.articleId || null,
-        title:     item.title,
-        status:    'todo',
-        addedAt:   new Date().toISOString()
-      });
-    }
+    // Nie dodawaj duplikatów artykułów z id
+    if (item.articleId && path.items.some(i => i.articleId === item.articleId)) return;
+    path.items.push({
+      articleId: item.articleId || null,
+      title:     item.title,
+      status:    'todo',
+      addedAt:   new Date().toISOString()
+    });
   });
   saveAll(paths);
 }
 
-/** Statystyki ścieżki */
+/**
+ * Statystyki ścieżki — nagłówki grup (type: 'group') nie wliczają się
+ * do liczby artykułów ani postępu.
+ */
 export function getPathStats(path) {
-  const total   = path.items.length;
-  const done    = path.items.filter(i => i.status === 'done').length;
-  const reading = path.items.filter(i => i.status === 'reading').length;
+  const articleItems = path.items.filter(i => i.type !== 'group');
+  const total   = articleItems.length;
+  const done    = articleItems.filter(i => i.status === 'done').length;
+  const reading = articleItems.filter(i => i.status === 'reading').length;
   const todo    = total - done - reading;
   const pct     = total ? Math.round((done / total) * 100) : 0;
   return { total, done, reading, todo, pct };
