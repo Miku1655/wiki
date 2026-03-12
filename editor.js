@@ -159,7 +159,7 @@ function bindEvents(articleId) {
     updateSyncBtn(syncBtn);
   });
 
-  // Scroll sync — textarea → preview (line-based)
+  // Scroll sync — textarea → preview
   textarea.addEventListener('scroll', () => {
     if (!syncScrollEnabled || syncLock || currentMode !== 'split') return;
     syncLock = true;
@@ -167,7 +167,7 @@ function bindEvents(articleId) {
     requestAnimationFrame(() => { syncLock = false; });
   });
 
-  // Scroll sync — preview → textarea (line-based)
+  // Scroll sync — preview → textarea
   document.getElementById('preview-pane').addEventListener('scroll', () => {
     if (!syncScrollEnabled || syncLock || currentMode !== 'split') return;
     syncLock = true;
@@ -320,7 +320,6 @@ function applyFormat(action) {
   } else if (fmt.wrap) {
     const [open, close] = fmt.wrap;
     if (sel.startsWith(open) && sel.endsWith(close) && sel.length > open.length + close.length) {
-      // toggle off — usuń wrapping
       const inner = sel.slice(open.length, sel.length - close.length);
       ta.focus();
       insertNative(ta, inner, inner, selStart, selEnd);
@@ -329,7 +328,6 @@ function applyFormat(action) {
       ta.focus();
       if (!sel) ta.setSelectionRange(selStart, selEnd);
       insertNative(ta, open + text + close, open + text + close, selStart, selEnd);
-      // Zaznacz tylko tekst bez wrapperów
       ta.setSelectionRange(selStart + open.length, selStart + open.length + text.length);
     }
 
@@ -356,14 +354,10 @@ function applyFormat(action) {
 // ── insertNative — używa execCommand dla natywnego undo ──
 
 function insertNative(ta, text, _unused, start, end) {
-  // Ustaw selekcję jeśli podano zakres
   if (start !== undefined) ta.setSelectionRange(start, end ?? start);
 
-  // execCommand('insertText') wstawia tekst z obsługą undo/redo przeglądarki
-  // i NIE przewija do końca (w przeciwieństwie do ta.value = ...)
   const ok = document.execCommand('insertText', false, text);
 
-  // Fallback dla przeglądarek bez execCommand
   if (!ok) {
     const s = ta.selectionStart, e = ta.selectionEnd;
     const scroll = ta.scrollTop;
@@ -499,60 +493,109 @@ function escHtml(str) {
 }
 
 // ── SCROLL SYNC ───────────────────────────────────────────
-
-function getTopLineOfTextarea(ta) {
-  const lineHeight = parseFloat(window.getComputedStyle(ta).lineHeight) || 20;
-  const paddingTop = parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
-  return Math.max(0, Math.round((ta.scrollTop - paddingTop) / lineHeight));
-}
-
-function getTopLineOfPreview(preview) {
-  // Znajdź element [data-line] którego górna krawędź jest najbliżej góry podglądu
-  const paneTop = preview.getBoundingClientRect().top;
-  let best = null;
-  let bestDist = Infinity;
-  for (const el of preview.querySelectorAll('[data-line]')) {
-    const dist = Math.abs(el.getBoundingClientRect().top - paneTop);
-    if (dist < bestDist) { bestDist = dist; best = el; }
-  }
-  return best ? parseInt(best.dataset.line) : 0;
-}
-
-function scrollPreviewToLine(preview, line) {
-  // Znajdź element [data-line] najbliższy danej linii i przewiń do niego
-  let best = null;
-  let bestDist = Infinity;
-  for (const el of preview.querySelectorAll('[data-line]')) {
-    const dist = Math.abs(parseInt(el.dataset.line) - line);
-    if (dist < bestDist) { bestDist = dist; best = el; }
-  }
-  if (!best) return;
-  // offsetTop względem preview-pane (scrollowalny kontener)
-  let top = 0;
-  let node = best;
-  while (node && node !== preview) { top += node.offsetTop; node = node.offsetParent; }
-  preview.scrollTop = top;
-}
-
-function scrollEditorToLine(ta, line) {
-  const lineHeight = parseFloat(window.getComputedStyle(ta).lineHeight) || 20;
-  const paddingTop = parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
-  ta.scrollTop = paddingTop + line * lineHeight;
-}
+//
+// Podejście: proporcja scroll (0.0–1.0) mapowana między edytorem a podglądem,
+// z korektą opartą na najbliższym elemencie [data-line] gdy są dostępne.
 
 function syncEditorToPreview(ta) {
   const preview = document.getElementById('preview-pane');
   if (!preview) return;
-  const line = getTopLineOfTextarea(ta);
-  scrollPreviewToLine(preview, line);
+
+  const blocks = getDataLineBlocks(preview);
+
+  if (!blocks.length) {
+    // Fallback: czysta proporcja
+    const ratio = getScrollRatio(ta);
+    preview.scrollTop = ratio * maxScroll(preview);
+    return;
+  }
+
+  // Która linia jest na górze edytora?
+  const lineHeight = parseFloat(window.getComputedStyle(ta).lineHeight) || 20;
+  const paddingTop = parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
+  const topLine    = Math.max(0, (ta.scrollTop - paddingTop) / lineHeight);
+
+  // Znajdź blok o numerze linii <= topLine (ostatni przed lub równy)
+  let target = blocks[0];
+  for (const b of blocks) {
+    if (b.line <= topLine) target = b;
+    else break;
+  }
+
+  // Przewiń preview tak, żeby ten element był na górze widoku
+  // target.top to pozycja elementu względem scrollTop=0 w preview
+  const nextBlock = blocks[blocks.indexOf(target) + 1];
+  let scrollTo = target.top;
+
+  if (nextBlock) {
+    // Interpoluj wewnątrz bloku
+    const fraction = (topLine - target.line) / (nextBlock.line - target.line);
+    scrollTo = target.top + fraction * (nextBlock.top - target.top);
+  }
+
+  preview.scrollTop = Math.max(0, scrollTo);
 }
 
 function syncPreviewToEditor(ta) {
   const preview = document.getElementById('preview-pane');
   if (!preview) return;
-  const line = getTopLineOfPreview(preview);
-  scrollEditorToLine(ta, line);
+
+  const blocks = getDataLineBlocks(preview);
+
+  if (!blocks.length) {
+    const ratio = getScrollRatio(preview);
+    ta.scrollTop = ratio * maxScroll(ta);
+    return;
+  }
+
+  // Który blok jest najbliżej górnej krawędzi widoku preview?
+  const viewTop = preview.scrollTop;
+  let target = blocks[0];
+  for (const b of blocks) {
+    if (b.top <= viewTop) target = b;
+    else break;
+  }
+
+  const nextBlock = blocks[blocks.indexOf(target) + 1];
+  const lineHeight = parseFloat(window.getComputedStyle(ta).lineHeight) || 20;
+  const paddingTop = parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
+
+  let targetLine = target.line;
+  if (nextBlock && nextBlock.top > target.top) {
+    const fraction = (viewTop - target.top) / (nextBlock.top - target.top);
+    targetLine = target.line + fraction * (nextBlock.line - target.line);
+  }
+
+  ta.scrollTop = paddingTop + targetLine * lineHeight;
 }
+
+/**
+ * Zwraca listę { line, top } dla każdego [data-line] w preview.
+ * `top` = pozycja elementu w układzie scrollowalnym preview-pane
+ *         (czyli ile preview.scrollTop musi wynosić, żeby element był na górze).
+ * Używamy: el.getBoundingClientRect().top - preview.getBoundingClientRect().top + preview.scrollTop
+ * To jest stabilne i niezależne od offsetParent.
+ */
+function getDataLineBlocks(preview) {
+  const previewRect = preview.getBoundingClientRect();
+  return [...preview.querySelectorAll('[data-line]')]
+    .map(el => ({
+      line: parseInt(el.dataset.line),
+      top:  el.getBoundingClientRect().top - previewRect.top + preview.scrollTop
+    }))
+    .filter(b => !isNaN(b.line))
+    .sort((a, b) => a.line - b.line);
+}
+
+function getScrollRatio(el) {
+  const max = maxScroll(el);
+  return max > 0 ? el.scrollTop / max : 0;
+}
+
+function maxScroll(el) {
+  return Math.max(0, el.scrollHeight - el.clientHeight);
+}
+
 // ── WIKI-LINK AUTOCOMPLETE ────────────────────────────────
 
 let acDropdown = null;
@@ -606,12 +649,10 @@ function showWikiAc(ta, items) {
 function positionAcDropdown(ta) {
   if (!acDropdown) return;
   const rect = ta.getBoundingClientRect();
-  // Pozycja kursora w textarea (heurystyka)
   const coords = getCaretCoords(ta);
   if (coords) {
     let left = rect.left + coords.left;
     let top  = rect.top  + coords.top + 22;
-    // Nie wychodź poza ekran
     acDropdown.style.display = 'block';
     const ddW = acDropdown.offsetWidth || 260;
     if (left + ddW > window.innerWidth - 8) left = window.innerWidth - ddW - 8;
