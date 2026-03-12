@@ -493,107 +493,23 @@ function escHtml(str) {
 }
 
 // ── SCROLL SYNC ───────────────────────────────────────────
-//
-// Podejście: proporcja scroll (0.0–1.0) mapowana między edytorem a podglądem,
-// z korektą opartą na najbliższym elemencie [data-line] gdy są dostępne.
 
 function syncEditorToPreview(ta) {
   const preview = document.getElementById('preview-pane');
   if (!preview) return;
-
-  const blocks = getDataLineBlocks(preview);
-
-  if (!blocks.length) {
-    // Fallback: czysta proporcja
-    const ratio = getScrollRatio(ta);
-    preview.scrollTop = ratio * maxScroll(preview);
-    return;
-  }
-
-  // Która linia jest na górze edytora?
-  const lineHeight = parseFloat(window.getComputedStyle(ta).lineHeight) || 20;
-  const paddingTop = parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
-  const topLine    = Math.max(0, (ta.scrollTop - paddingTop) / lineHeight);
-
-  // Znajdź blok o numerze linii <= topLine (ostatni przed lub równy)
-  let target = blocks[0];
-  for (const b of blocks) {
-    if (b.line <= topLine) target = b;
-    else break;
-  }
-
-  // Przewiń preview tak, żeby ten element był na górze widoku
-  // target.top to pozycja elementu względem scrollTop=0 w preview
-  const nextBlock = blocks[blocks.indexOf(target) + 1];
-  let scrollTo = target.top;
-
-  if (nextBlock) {
-    // Interpoluj wewnątrz bloku
-    const fraction = (topLine - target.line) / (nextBlock.line - target.line);
-    scrollTo = target.top + fraction * (nextBlock.top - target.top);
-  }
-
-  preview.scrollTop = Math.max(0, scrollTo);
+  const maxTa      = ta.scrollHeight - ta.clientHeight;
+  const maxPreview = preview.scrollHeight - preview.clientHeight;
+  if (maxTa <= 0 || maxPreview <= 0) return;
+  preview.scrollTop = (ta.scrollTop / maxTa) * maxPreview;
 }
 
 function syncPreviewToEditor(ta) {
   const preview = document.getElementById('preview-pane');
   if (!preview) return;
-
-  const blocks = getDataLineBlocks(preview);
-
-  if (!blocks.length) {
-    const ratio = getScrollRatio(preview);
-    ta.scrollTop = ratio * maxScroll(ta);
-    return;
-  }
-
-  // Który blok jest najbliżej górnej krawędzi widoku preview?
-  const viewTop = preview.scrollTop;
-  let target = blocks[0];
-  for (const b of blocks) {
-    if (b.top <= viewTop) target = b;
-    else break;
-  }
-
-  const nextBlock = blocks[blocks.indexOf(target) + 1];
-  const lineHeight = parseFloat(window.getComputedStyle(ta).lineHeight) || 20;
-  const paddingTop = parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
-
-  let targetLine = target.line;
-  if (nextBlock && nextBlock.top > target.top) {
-    const fraction = (viewTop - target.top) / (nextBlock.top - target.top);
-    targetLine = target.line + fraction * (nextBlock.line - target.line);
-  }
-
-  ta.scrollTop = paddingTop + targetLine * lineHeight;
-}
-
-/**
- * Zwraca listę { line, top } dla każdego [data-line] w preview.
- * `top` = pozycja elementu w układzie scrollowalnym preview-pane
- *         (czyli ile preview.scrollTop musi wynosić, żeby element był na górze).
- * Używamy: el.getBoundingClientRect().top - preview.getBoundingClientRect().top + preview.scrollTop
- * To jest stabilne i niezależne od offsetParent.
- */
-function getDataLineBlocks(preview) {
-  const previewRect = preview.getBoundingClientRect();
-  return [...preview.querySelectorAll('[data-line]')]
-    .map(el => ({
-      line: parseInt(el.dataset.line),
-      top:  el.getBoundingClientRect().top - previewRect.top + preview.scrollTop
-    }))
-    .filter(b => !isNaN(b.line))
-    .sort((a, b) => a.line - b.line);
-}
-
-function getScrollRatio(el) {
-  const max = maxScroll(el);
-  return max > 0 ? el.scrollTop / max : 0;
-}
-
-function maxScroll(el) {
-  return Math.max(0, el.scrollHeight - el.clientHeight);
+  const maxTa      = ta.scrollHeight - ta.clientHeight;
+  const maxPreview = preview.scrollHeight - preview.clientHeight;
+  if (maxTa <= 0 || maxPreview <= 0) return;
+  ta.scrollTop = (preview.scrollTop / maxPreview) * maxTa;
 }
 
 // ── WIKI-LINK AUTOCOMPLETE ────────────────────────────────
