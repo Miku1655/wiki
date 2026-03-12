@@ -1,6 +1,6 @@
 // history.js — Historia przeglądania
 
-import { addHistoryEntry, fetchHistory, deleteHistoryEntry, deleteHistoryRange } from './storage.js';
+import { addHistoryEntry, fetchHistory, deleteHistoryEntry } from './storage.js';
 import { getUser } from './auth.js';
 
 let navigateFn = null;
