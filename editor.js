@@ -78,8 +78,8 @@ export async function renderEditor(articleId, prefillTitle = '', options = {}) {
         </div>
         <div class="fmt-sep"></div>
         <div class="fmt-group">
-          <button class="fmt-btn" data-action="ul"        title="Lista punktowana">• —</button>
-          <button class="fmt-btn" data-action="ol"        title="Lista numerowana">1.</button>
+          <button class="fmt-btn" data-action="ul"        title="Lista punktowana (Tab=wcięcie, Shift+Tab=odcięcie)">• —</button>
+          <button class="fmt-btn" data-action="ol"        title="Lista numerowana (Tab=wcięcie, Shift+Tab=odcięcie)">1.</button>
           <button class="fmt-btn" data-action="quote"     title="Cytat">❝</button>
           <button class="fmt-btn" data-action="code"      title="Kod inline">&lt;/&gt;</button>
           <button class="fmt-btn" data-action="codeblock" title="Blok kodu">{ }</button>
@@ -248,36 +248,125 @@ function handleKeydown(e) {
   if (e.altKey && e.key === '1') { e.preventDefault(); setMode('edit'); return; }
   if (e.altKey && e.key === '2') { e.preventDefault(); setMode('split'); return; }
   if (e.altKey && e.key === '3') { e.preventDefault(); setMode('preview'); return; }
-  if (e.key === 'Tab') { e.preventDefault(); insertNative(e.target, '  ', '  '); return; }
+
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    handleListIndent(e.target, e.shiftKey);
+    return;
+  }
+
   if (e.key === 'Enter') handleListContinue(e);
 }
+
+// ── WCIĘCIA LISTY (Tab / Shift+Tab) ──────────────────────
+//
+// Na linii listy:
+//   Tab        → dodaje 2 spacje na początku linii (zagłębienie)
+//   Shift+Tab  → usuwa 2 spacje z początku linii (wynurzenie)
+// Poza listą:
+//   Tab        → wstawia 2 spacje w miejscu kursora (stare zachowanie)
+
+function handleListIndent(ta, shiftKey) {
+  const val      = ta.value;
+  const selStart = ta.selectionStart;
+  const selEnd   = ta.selectionEnd;
+
+  // Wyznacz zakres linii objętych zaznaczeniem
+  const blockStart = val.lastIndexOf('\n', selStart - 1) + 1;
+  const before     = val.slice(0, blockStart);
+  const block      = val.slice(blockStart, selEnd);
+  const after      = val.slice(selEnd);
+  const lines      = block.split('\n');
+
+  // Sprawdź czy którakolwiek linia to linia listy
+  const isListBlock = lines.some(l => /^\s*([-*]|\d+\.) /.test(l));
+
+  if (!isListBlock) {
+    // Poza listą: tylko Tab wstawia spacje w miejscu kursora
+    if (!shiftKey) insertNative(ta, '  ', '  ');
+    return;
+  }
+
+  const INDENT = '  ';
+  const newLines = lines.map(line => {
+    if (!shiftKey) {
+      return INDENT + line;
+    } else {
+      if (line.startsWith(INDENT)) return line.slice(INDENT.length);
+      if (line.startsWith(' '))    return line.slice(1);
+      return line;
+    }
+  });
+
+  const newBlock   = newLines.join('\n');
+  const lengthDiff = newBlock.length - block.length;
+
+  ta.focus();
+  insertNative(ta, newBlock, newBlock, blockStart, selEnd);
+
+  // Przywróć zaznaczenie przesunięte o zmianę długości
+  const newStart = Math.max(blockStart, selStart + (shiftKey ? -(lines[0].length - newLines[0].length) : INDENT.length));
+  ta.setSelectionRange(newStart, Math.max(blockStart, selEnd + lengthDiff));
+}
+
+// ── KONTYNUACJA LISTY (Enter) ─────────────────────────────
+//
+// Naprawione błędy względem oryginału:
+//   • Warunek "pusta pozycja → wyjdź z listy" był zawsze fałszywy
+//     (sprawdzał zły string). Teraz działa poprawnie.
+//   • Przy zagnieżdżeniu: Enter na pustej pozycji wynurza o poziom,
+//     nie wychodzi od razu z całej listy.
+//   • Zachowuje pełne wcięcie (indent) linii nadrzędnej.
 
 function handleListContinue(e) {
   const ta  = e.target;
   const val = ta.value;
   const pos = ta.selectionStart;
-  const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
-  const line = val.slice(lineStart, pos);
 
-  const ulMatch = line.match(/^(\s*)([-*]) /);
-  const olMatch = line.match(/^(\s*)(\d+)\. /);
+  // Nie rób nic przy zaznaczeniu — standardowe zachowanie
+  if (ta.selectionEnd !== pos) return;
+
+  const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
+  const line      = val.slice(lineStart, pos);
+
+  const ulMatch = line.match(/^(\s*)([-*])([ \t])(.*)$/);
+  const olMatch = line.match(/^(\s*)(\d+)\.([ \t])(.*)$/);
 
   if (ulMatch) {
     e.preventDefault();
-    if (line.trimEnd() === ulMatch[2]) {
-      insertNative(ta, '', '', lineStart, pos); // usuń pustą pozycję
-      insertNative(ta, '\n', '\n');
+    const [, indent, marker, , content] = ulMatch;
+
+    if (!content.trim()) {
+      // Pusta pozycja listy
+      if (indent.length >= 2) {
+        // Wynurz o jeden poziom
+        const newIndent = indent.slice(2);
+        insertNative(ta, `${newIndent}${marker} `, `${newIndent}${marker} `, lineStart, pos);
+        ta.setSelectionRange(lineStart + newIndent.length + 2, lineStart + newIndent.length + 2);
+      } else {
+        // Wyjście z listy
+        insertNative(ta, '', '', lineStart, pos);
+        insertNative(ta, '\n', '\n');
+      }
     } else {
-      insertNative(ta, `\n${ulMatch[1]}${ulMatch[2]} `, `\n${ulMatch[1]}${ulMatch[2]} `);
+      // Kontynuuj na tym samym poziomie
+      insertNative(ta, `\n${indent}${marker} `, `\n${indent}${marker} `);
     }
+
   } else if (olMatch) {
     e.preventDefault();
-    if (line.trimEnd() === `${olMatch[2]}.`) {
-      insertNative(ta, '', '', lineStart, pos);
-      insertNative(ta, '\n', '\n');
+    const [, indent, numStr, , content] = olMatch;
+
+    if (!content.trim()) {
+      if (indent.length >= 2) {
+        const newIndent = indent.slice(2);
+        insertNative(ta, `${newIndent}${parseInt(numStr) + 1}. `, `${newIndent}${parseInt(numStr) + 1}. `, lineStart, pos);
+      } else {
+        insertNative(ta, '', '', lineStart, pos);
+        insertNative(ta, '\n', '\n');
+      }
     } else {
-      const next = `\n${olMatch[1]}${parseInt(olMatch[2]) + 1}. `;
-      insertNative(ta, next, next);
+      insertNative(ta, `\n${indent}${parseInt(numStr) + 1}. `, `\n${indent}${parseInt(numStr) + 1}. `);
     }
   }
 }
@@ -525,7 +614,6 @@ function handleWikiAutocomplete(ta) {
   const pos    = ta.selectionStart;
   const before = ta.value.slice(0, pos);
 
-  // Szukaj ostatniego [[ bez zamknięcia ]]
   const bracketIdx = before.lastIndexOf('[[');
   if (bracketIdx === -1) { hideWikiAc(); return; }
   const afterBracket = before.slice(bracketIdx + 2);
