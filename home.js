@@ -95,7 +95,7 @@ export function renderHome() {
             <div class="home-paths-row">
               ${paths.slice(0, 4).map(p => {
                 const { total, done, pct } = getPathStats(p);
-                return \`<div class="home-path-card path-nav" data-id="\${p.id}">
+                return `<div class="home-path-card path-nav" data-id="\${p.id}">
                   <div class="home-path-name">\${escHtml(p.name)}</div>
                   <div class="path-progress-bar" style="margin:6px 0 4px">
                     <div class="path-progress-fill" style="width:\${pct}%"></div>
