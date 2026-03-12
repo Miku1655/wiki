@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pl" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kompendium</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- TOP BAR -->
+  <header id="topbar">
+    <div id="topbar-left">
+      <button id="btn-toggle-sidebar" class="icon-btn" title="Panel kategorii">&#9776;</button>
+      <a id="logo" href="#" data-route="home">Kompendium</a>
+    </div>
+    <div id="search-wrapper">
+      <input type="text" id="search-input" placeholder="Szukaj artykułów, tagów, sekcji…" autocomplete="off" />
+      <div id="search-results" class="hidden"></div>
+    </div>
+    <div id="topbar-right">
+      <button id="btn-history" class="icon-btn" title="Historia przeglądania" data-route="history">⏱</button>
+      <button id="btn-new-article" class="icon-btn" title="Nowy artykuł">✦</button>
+      <button id="btn-tabs-panel" class="icon-btn" title="Otwarte karty">▣</button>
+      <button id="btn-theme" class="icon-btn" title="Tryb jasny/ciemny">◑</button>
+      <button id="btn-auth" class="icon-btn" title="Zaloguj się">👤</button>
+    </div>
+  </header>
+
+  <!-- MAIN LAYOUT -->
+  <div id="layout">
+
+    <!-- LEFT SIDEBAR -->
+    <aside id="sidebar-left">
+      <div id="sidebar-left-inner">
+        <div id="category-tree-header">
+          <span>Kategorie</span>
+          <button id="btn-new-category" class="icon-btn small" title="Nowa kategoria">+</button>
+        </div>
+        <div id="category-tree"></div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main id="main-content">
+      <!-- Views injected here by JS -->
+    </main>
+
+    <!-- RIGHT SIDEBAR -->
+    <aside id="sidebar-right">
+      <div id="sidebar-right-inner">
+        <!-- Infobox, TOC, tags, related injected here -->
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- PANEL: TABS (slides from right, overlays sidebar-right) -->
+  <div id="panel-tabs" class="side-panel hidden">
+    <div class="side-panel-header">
+      <span>Otwarte karty</span>
+      <button class="icon-btn" id="btn-close-tabs-panel">✕</button>
+    </div>
+    <div id="tabs-list"></div>
+  </div>
+
+  <!-- PANEL: LINK PREVIEW (slides from right) -->
+  <div id="panel-preview" class="side-panel hidden">
+    <div class="side-panel-header">
+      <span id="preview-title">Podgląd</span>
+      <div style="display:flex;gap:6px;">
+        <button class="btn-small" id="btn-preview-open">Otwórz</button>
+        <button class="btn-small" id="btn-preview-new-tab">Nowa karta</button>
+        <button class="icon-btn" id="btn-close-preview">✕</button>
+      </div>
+    </div>
+    <div id="preview-content"></div>
+  </div>
+
+  <!-- OVERLAY for panels -->
+  <div id="panel-overlay" class="hidden"></div>
+
+  <!-- MODAL: Auth -->
+  <div id="modal-auth" class="modal hidden">
+    <div class="modal-box">
+      <h2>Logowanie</h2>
+      <p>Zaloguj się przez Google aby uzyskać dostęp do swojego kompendium.</p>
+      <button id="btn-google-login" class="btn-primary">Zaloguj przez Google</button>
+    </div>
+  </div>
+
+  <!-- MODAL: New/Edit Category -->
+  <div id="modal-category" class="modal hidden">
+    <div class="modal-box">
+      <h2 id="modal-category-title">Nowa kategoria</h2>
+      <label>Nazwa<input type="text" id="input-category-name" /></label>
+      <label>Kategoria nadrzędna
+        <select id="input-category-parent"><option value="">— brak (główna) —</option></select>
+      </label>
+      <div class="modal-actions">
+        <button id="btn-category-save" class="btn-primary">Zapisz</button>
+        <button id="btn-category-cancel" class="btn-ghost">Anuluj</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="hidden"></div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+    // ⚠️  UZUPEŁNIJ SWOJĄ KONFIGURACJĘ FIREBASE TUTAJ
+    const firebaseConfig = {
+      apiKey: "TWOJ_API_KEY",
+      authDomain: "TWOJ_PROJECT.firebaseapp.com",
+      projectId: "TWOJ_PROJECT_ID",
+      storageBucket: "TWOJ_PROJECT.appspot.com",
+      messagingSenderId: "TWOJ_SENDER_ID",
+      appId: "TWOJ_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    window.__db  = getFirestore(app);
+    window.__auth = getAuth(app);
+
+    // Load app after Firebase is ready
+    const { initApp } = await import('./app.js');
+    initApp();
+  </script>
+
+</body>
+</html>

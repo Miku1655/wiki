@@ -1,0 +1,261 @@
+// app.js — Inicjalizacja aplikacji i routing
+
+import { initTheme }        from './theme.js';
+import { initAuth, onAuthChange, getUser } from './auth.js';
+import { loadArticlesMeta, getArticleFull, getAllMeta, getMetaById } from './articles.js';
+import { loadCategoriesData }  from './categories.js';
+import { initSidebarLeft, renderCategoryTree } from './sidebar-left.js';
+import { initSidebarRight, renderSidebarRight, clearSidebarRight } from './sidebar-right.js';
+import { initTabsPanel }    from './panel-tabs.js';
+import { initPreview, showPreview } from './preview.js';
+import { initHistory, renderHistory, logView } from './history.js';
+import { renderHome, initHome }  from './home.js';
+import { renderEditor, initEditor } from './editor.js';
+import { initUI, showToast }    from './ui.js';
+import { renderMarkdown }   from './markdown.js';
+import { openTab, updateTabTitle } from './tabs.js';
+
+// ── INICJALIZACJA ─────────────────────────────────────────
+
+export async function initApp() {
+  initTheme();
+  initAuth();
+  initSidebarLeft(navigate);
+  initSidebarRight(navigate);
+  initTabsPanel(navigate);
+  initPreview(navigate);
+  initHistory(navigate);
+  initHome(navigate);
+  initEditor(navigate);
+  initUI(navigate);
+
+  // Reaguj na logowanie
+  onAuthChange(async user => {
+    if (user) {
+      await loadData();
+      navigate('home');
+    } else {
+      // Pokaż modal logowania
+      document.getElementById('modal-auth').classList.remove('hidden');
+    }
+  });
+}
+
+async function loadData() {
+  try {
+    await Promise.all([
+      loadArticlesMeta(),
+      loadCategoriesData()
+    ]);
+    renderCategoryTree();
+  } catch(e) {
+    console.error('Błąd ładowania danych:', e);
+    showToast('Błąd połączenia z bazą danych');
+  }
+}
+
+// ── ROUTING ───────────────────────────────────────────────
+
+/**
+ * Nawigacja po aplikacji.
+ * route: 'home' | 'article/:id' | 'editor/:id' | 'history' | 'category/:id' | 'tag/:name'
+ * options: { newTab, prefillTitle }
+ */
+export async function navigate(route, options = {}) {
+  // Wyczyść hash z route jeśli jest
+  const [baseRoute, hash] = route.split('#');
+  route = baseRoute;
+
+  const parts = route.split('/');
+  const view  = parts[0];
+  const param = parts.slice(1).join('/');
+
+  // Obsługa nowej karty
+  if (options.newTab && view === 'article') {
+    openTab(route, getMetaById(param)?.title || 'Artykuł');
+  }
+
+  // Render odpowiedniego widoku
+  switch(view) {
+    case 'home':
+      renderHome();
+      clearSidebarRight();
+      break;
+
+    case 'article':
+      await renderArticle(param, hash);
+      break;
+
+    case 'editor':
+      await renderEditor(param === 'new' ? null : param, options.prefillTitle);
+      break;
+
+    case 'history':
+      await renderHistory();
+      clearSidebarRight();
+      break;
+
+    case 'category':
+      renderCategoryView(param);
+      break;
+
+    case 'tag':
+      renderTagView(param);
+      break;
+
+    default:
+      renderHome();
+  }
+}
+
+// ── WIDOK ARTYKUŁU ────────────────────────────────────────
+
+async function renderArticle(id, hash = '') {
+  const main = document.getElementById('main-content');
+  main.innerHTML = '<div class="loading-spinner"><div class="spinner"></div> Ładowanie artykułu…</div>';
+  clearSidebarRight();
+
+  let article;
+  try {
+    article = await getArticleFull(id);
+  } catch(e) {
+    main.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><p>Nie można załadować artykułu.</p></div>';
+    return;
+  }
+
+  if (!article) {
+    main.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><p>Artykuł nie istnieje.</p></div>';
+    return;
+  }
+
+  // Loguj w historii
+  logView(id, article.title);
+
+  // Rejestruj kartę
+  openTab('article/' + id, article.title);
+
+  const html = renderMarkdown(article.content || '');
+
+  main.innerHTML = `
+    <div id="article-actions">
+      <button class="btn-small" id="btn-edit-article">✎ Edytuj</button>
+      <button class="btn-small" id="btn-article-new-tab">↗ Otwórz w nowej karcie</button>
+      <span class="spacer"></span>
+      <span style="font-size:.78rem;color:var(--text-faint)">
+        ${article.updatedAt?.toDate ? formatDate(article.updatedAt.toDate()) : ''}
+      </span>
+    </div>
+    <div id="view-article">
+      <h1>${escHtml(article.title)}</h1>
+      <div class="article-meta">
+        ${article.category ? `<span>📁 ${escHtml(getCatName(article.category))}</span>` : ''}
+        ${(article.tags||[]).map(t => `<span>#${escHtml(t)}</span>`).join('')}
+      </div>
+      <div class="md-content">${html}</div>
+    </div>
+  `;
+
+  // Akcje
+  document.getElementById('btn-edit-article').addEventListener('click', () => {
+    navigate('editor/' + id);
+  });
+  document.getElementById('btn-article-new-tab').addEventListener('click', () => {
+    navigate('article/' + id, { newTab: true });
+    showToast('Otwarto w nowej karcie');
+  });
+
+  // Wiki-linki → podgląd
+  document.querySelectorAll('.wiki-link').forEach(el => {
+    el.addEventListener('click', () => {
+      showPreview(el.dataset.articleId || null, el.dataset.articleTitle);
+    });
+  });
+
+  // Renderuj prawy panel
+  renderSidebarRight(article);
+
+  // Przewiń do sekcji jeśli jest hash
+  if (hash) {
+    setTimeout(() => {
+      const heading = document.querySelector(`#view-article [id="${CSS.escape(decodeURIComponent(hash))}"]`);
+      if (heading) heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }
+}
+
+// ── WIDOK KATEGORII ───────────────────────────────────────
+
+function renderCategoryView(categoryId) {
+  const { filterByCategory } = window.__searchFilter || {};
+  const articles = getAllMeta().filter(a => a.category === categoryId);
+  const main = document.getElementById('main-content');
+  clearSidebarRight();
+
+  // Importujemy getCategoryName dynamicznie z modułu
+  import('./categories.js').then(({ getCategoryName }) => {
+    const catName = getCategoryName(categoryId);
+    main.innerHTML = `
+      <div id="view-home" style="padding:36px 48px">
+        <h1 style="font-family:var(--font-heading);font-size:1.7rem;margin-bottom:20px">📁 ${escHtml(catName)}</h1>
+        ${articles.length ? `
+          <ul class="recent-list">
+            ${articles.map(a => `
+              <li>
+                <a class="cat-article" data-id="${a.id}">${escHtml(a.title)}</a>
+                <span class="recent-date">${(a.tags||[]).map(t=>`#${t}`).join(' ')}</span>
+              </li>
+            `).join('')}
+          </ul>
+        ` : `<div class="empty-state"><div class="empty-icon">📂</div><p>Brak artykułów w tej kategorii.</p></div>`}
+      </div>
+    `;
+    document.querySelectorAll('.cat-article').forEach(el => {
+      el.addEventListener('click', () => navigate('article/' + el.dataset.id));
+    });
+  });
+}
+
+// ── WIDOK TAGU ────────────────────────────────────────────
+
+function renderTagView(tag) {
+  const articles = getAllMeta().filter(a => (a.tags||[]).includes(tag));
+  const main = document.getElementById('main-content');
+  clearSidebarRight();
+
+  main.innerHTML = `
+    <div id="view-home" style="padding:36px 48px">
+      <h1 style="font-family:var(--font-heading);font-size:1.7rem;margin-bottom:20px">#${escHtml(tag)}</h1>
+      ${articles.length ? `
+        <ul class="recent-list">
+          ${articles.map(a => `
+            <li>
+              <a class="tag-article" data-id="${a.id}">${escHtml(a.title)}</a>
+            </li>
+          `).join('')}
+        </ul>
+      ` : `<div class="empty-state"><div class="empty-icon">🏷️</div><p>Brak artykułów z tym tagiem.</p></div>`}
+    </div>
+  `;
+  document.querySelectorAll('.tag-article').forEach(el => {
+    el.addEventListener('click', () => navigate('article/' + el.dataset.id));
+  });
+}
+
+// ── HELPERS ───────────────────────────────────────────────
+
+function getCatName(id) {
+  // Synchroniczny dostęp z cache kategorii
+  try {
+    const cats = JSON.parse(localStorage.getItem('kp_categories') || '[]');
+    return cats.find(c => c.id === id)?.name || id;
+  } catch { return id; }
+}
+
+function formatDate(date) {
+  if (!date) return '';
+  return new Date(date).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function escHtml(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
