@@ -2,6 +2,23 @@
 
 import { getArticleByTitle } from './articles.js';
 
+// ── HELPERS ───────────────────────────────────────────────
+
+/**
+ * Generuje bezpieczny slug HTML id z tekstu nagłówka.
+ * Usuwa znaki specjalne, zostawia alfanumeryczne, spacje → myślniki.
+ * Zachowuje polskie litery (nie zamienia ą→a itp.) — CSS.escape() w
+ * konsumentach (sidebar-right, app) poradzi sobie z nimi poprawnie.
+ */
+function slugify(text) {
+  return text
+    .trim()
+    .replace(/[&<>"'`=\/]/g, '')   // usuń znaki niebezpieczne dla HTML attr
+    .replace(/\s+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 /**
  * Renderuje Markdown do HTML.
  * Obsługuje: nagłówki, bold, italic, code, linki, obrazy,
@@ -12,7 +29,7 @@ export function renderMarkdown(text, onLinkClick) {
 
   let html = text;
 
-  // Escape HTML (bezpieczeństwo)
+  // Escape HTML (bezpieczeństwo) — musi być PIERWSZA operacja
   html = html
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -30,8 +47,12 @@ export function renderMarkdown(text, onLinkClick) {
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
   // Obrazy ![alt](url)
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,
-    '<img src="$2" alt="$1" loading="lazy" />');
+  // alt jest już po escape'owaniu, url sanitizujemy — tylko http/https
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
+    const safeUrl = /^https?:\/\//i.test(url.trim()) ? url.trim() : '';
+    if (!safeUrl) return escHtml(alt);
+    return `<img src="${safeUrl}" alt="${alt}" loading="lazy" />`;
+  });
 
   // [[Wiki-linki]] z opcjonalnym aliasem [[Cel|wyświetlany tekst]]
   html = html.replace(/\[\[([^\]]+)\]\]/g, (_, inner) => {
@@ -42,18 +63,33 @@ export function renderMarkdown(text, onLinkClick) {
     const cls = article ? 'wiki-link' : 'wiki-link missing';
     const id  = article ? article.id : '';
     const tip = article ? '' : ' title="Artykuł nie istnieje"';
-    return `<span class="${cls}" data-article-id="${id}" data-article-title="${title}"${tip}>${display}</span>`;
+    // display i title są już po html-escape bo przetwarzamy post-escape tekst
+    return `<span class="${cls}" data-article-id="${id}" data-article-title="${escAttr(title)}"${tip}>${display}</span>`;
   });
 
   // Linki [text](url)
   html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
-    '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
-  // Nagłówki
-  html = html.replace(/^#### (.+)$/gm, '<h4 id="$1">$1</h4>');
-  html = html.replace(/^### (.+)$/gm,  '<h3 id="$1">$1</h3>');
-  html = html.replace(/^## (.+)$/gm,   '<h2 id="$1">$1</h2>');
-  html = html.replace(/^# (.+)$/gm,    '<h1 id="$1">$1</h1>');
+  // Nagłówki — POPRAWKA: slug generujemy z surowego tekstu (przed escape),
+  // ale ponieważ operujemy już na html-escaped stringu, najpierw unescape
+  // fragment naghłówka, slugify, i ponownie escape dla atrybutu id.
+  html = html.replace(/^#### (.+)$/gm, (_, raw) => {
+    const slug = slugify(unescapeHtml(raw));
+    return `<h4 id="${escAttr(slug)}">${raw}</h4>`;
+  });
+  html = html.replace(/^### (.+)$/gm, (_, raw) => {
+    const slug = slugify(unescapeHtml(raw));
+    return `<h3 id="${escAttr(slug)}">${raw}</h3>`;
+  });
+  html = html.replace(/^## (.+)$/gm, (_, raw) => {
+    const slug = slugify(unescapeHtml(raw));
+    return `<h2 id="${escAttr(slug)}">${raw}</h2>`;
+  });
+  html = html.replace(/^# (.+)$/gm, (_, raw) => {
+    const slug = slugify(unescapeHtml(raw));
+    return `<h1 id="${escAttr(slug)}">${raw}</h1>`;
+  });
 
   // Linie poziome
   html = html.replace(/^(-{3,}|\*{3,})$/gm, '<hr />');
@@ -117,14 +153,12 @@ export function renderMarkdownWithLines(text) {
   if (!text) return '';
 
   const lines = text.split('\n');
-  // Zbieramy bloki: { startLine, endLine, raw }
   const blocks = [];
   let i = 0;
 
   while (i < lines.length) {
     const line = lines[i];
 
-    // Blok kodu
     if (line.startsWith('```')) {
       const start = i;
       i++;
@@ -134,20 +168,16 @@ export function renderMarkdownWithLines(text) {
       continue;
     }
 
-    // Pusta linia — pomiń, nie tworzy bloku
     if (!line.trim()) { i++; continue; }
 
-    // Zbierz akapit (do pustej linii)
     const start = i;
     while (i < lines.length && lines[i].trim()) i++;
     blocks.push({ startLine: start, endLine: i - 1, raw: lines.slice(start, i).join('\n') });
   }
 
-  // Renderuj każdy blok osobno i opakuj w kontener z data-line
   return blocks.map(b => {
     const html = renderMarkdown(b.raw);
     if (!html.trim()) return '';
-    // Wstaw data-line na pierwszy element HTML bloku
     return html.replace(/^(<\w+)/, `$1 data-line="${b.startLine}"`);
   }).join('\n');
 }
@@ -160,10 +190,11 @@ export function extractHeadings(text) {
   for (const line of lines) {
     const m = line.match(/^(#{2,4})\s+(.+)$/);
     if (m) {
+      const rawText = m[2].trim();
       headings.push({
         level: m[1].length,
-        text: m[2].trim(),
-        id: m[2].trim()
+        text:  rawText,
+        id:    slugify(rawText),   // slug spójny z tym co generuje renderMarkdown
       });
     }
   }
@@ -179,8 +210,29 @@ export function highlightSnippet(content, query, maxLen = 140) {
   const start = Math.max(0, idx - 40);
   const end   = Math.min(content.length, idx + query.length + 80);
   let snippet = (start > 0 ? '…' : '') + content.slice(start, end) + (end < content.length ? '…' : '');
-  // Podświetl
   const re = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
   snippet = snippet.replace(re, '<mark>$1</mark>');
   return snippet;
+}
+
+// ── HELPERS ───────────────────────────────────────────────
+
+function escHtml(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/** Escape wartości atrybutu HTML (cudzysłów i apostrofy) */
+function escAttr(str) {
+  return (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Odwraca minimalny html-escape (tylko &amp; &lt; &gt;) */
+function unescapeHtml(str) {
+  return (str || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
 }
