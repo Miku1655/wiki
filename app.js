@@ -7,6 +7,7 @@ import { loadCategoriesData }  from './categories.js';
 import { initSidebarLeft, renderCategoryTree } from './sidebar-left.js';
 import { initSidebarRight, renderSidebarRight, clearSidebarRight } from './sidebar-right.js';
 import { initTabsPanel }    from './panel-tabs.js';
+import { initTagsPanel }    from './panel-tags.js';
 import { initPreview, showPreview } from './preview.js';
 import { initHistory, renderHistory, logView } from './history.js';
 import { renderHome, initHome }  from './home.js';
@@ -23,11 +24,18 @@ export async function initApp() {
   initSidebarLeft(navigate);
   initSidebarRight(navigate);
   initTabsPanel(navigate);
+  initTagsPanel(navigate);
   initPreview(navigate);
   initHistory(navigate);
   initHome(navigate);
   initEditor(navigate);
   initUI(navigate);
+
+  // Logo → strona główna
+  document.getElementById('logo').addEventListener('click', e => {
+    e.preventDefault();
+    navigate('home');
+  });
 
   // Reaguj na logowanie
   onAuthChange(async user => {
