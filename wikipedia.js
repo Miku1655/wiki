@@ -81,9 +81,18 @@ export function convertWikitextToMarkdown(title, wikitext) {
   text = text.replace(/'{2}(.+?)'{2}/g, '*$1*');
 
   // ── 5. Linki wewnętrzne ───────────────────────────────
-  // [[Tytuł|tekst]] → [[Tytuł]] (zachowaj jako wikilink aplikacji, ignoruj alias)
-  text = text.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '[[$1]]');
-  text = text.replace(/\[\[([^\]]+)\]\]/g, '[[$1]]');
+  // Kolejność ma znaczenie:
+
+  // a) [[Tytuł|alias]] → [[Tytuł|alias]] (zachowaj alias)
+  text = text.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '[[$1|$2]]');
+
+  // b) [[Tytuł]]końcówka → [[Tytuł|Tytułkońcówka]]  (odmiana fleksyjna, np. [[Konfucjusz]]owi)
+  text = text.replace(/\[\[([^\]|]+)\]\]([a-zA-ZąćęłńóśźżĄĆĘŁŃÓŚŹŻ]+)/g,
+    (_, title, suffix) => `[[${title}|${title}${suffix}]]`
+  );
+
+  // c) [[Tytuł]] bez końcówki → [[Tytuł]]
+  text = text.replace(/\[\[([^\]|]+)\]\]/g, '[[$1]]');
 
   // ── 6. Linki zewnętrzne ───────────────────────────────
   text = text.replace(/\[https?:\/\/[^\s\]]+\s([^\]]+)\]/g, '$1');
