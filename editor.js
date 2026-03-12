@@ -520,8 +520,7 @@ function handleWikiAutocomplete(ta) {
   const bracketIdx = before.lastIndexOf('[[');
   if (bracketIdx === -1) { hideWikiAc(); return; }
   const afterBracket = before.slice(bracketIdx + 2);
-  if (afterBracket.includes(']]') || afterBracket.includes('
-') || afterBracket.includes('|')) {
+  if (afterBracket.includes(']]') || afterBracket.includes('\n') || afterBracket.includes('|')) {
     hideWikiAc(); return;
   }
 
