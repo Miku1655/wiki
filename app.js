@@ -18,6 +18,7 @@ import { openTab, updateTabTitle } from './tabs.js';
 import { initPanelManager, closeAll } from './panels.js';
 import { isBookmarked, toggleBookmark } from './bookmarks.js';
 import { initWikipediaImport } from './wikipedia-modal.js';
+import { initPathsPanel, renderPathView, renderArticlePathWidget } from './panel-paths.js';
 
 // ── INICJALIZACJA ─────────────────────────────────────────
 
@@ -35,6 +36,7 @@ export async function initApp() {
   initEditor(navigate);
   initUI(navigate);
   initWikipediaImport(navigate);
+  initPathsPanel(navigate);
 
   // Logo → strona główna
   document.getElementById('logo').addEventListener('click', e => {
@@ -117,6 +119,11 @@ export async function navigate(route, options = {}) {
 
     case 'tag':
       renderTagView(param);
+      break;
+
+    case 'path':
+      renderPathView(param);
+      import('./sidebar-right.js').then(m => m.clearSidebarRight());
       break;
 
     default:
@@ -203,6 +210,10 @@ async function renderArticle(id, hash = '') {
 
   // Renderuj prawy panel
   renderSidebarRight(article);
+
+  // Widget ścieżek czytania w action barze
+  const pathWidget = renderArticlePathWidget(id, article.title);
+  document.getElementById('article-actions').appendChild(pathWidget);
 
   // Przewiń do sekcji jeśli jest hash
   if (hash) {

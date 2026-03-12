@@ -6,6 +6,7 @@ const PANELS = {
   tabs:    { panel: 'panel-tabs',      overlay: true  },
   tags:    { panel: 'panel-tags-list', overlay: true  },
   preview: { panel: 'panel-preview',   overlay: true  },
+  paths:   { panel: 'panel-paths',     overlay: true  },
 };
 
 let currentPanel = null;

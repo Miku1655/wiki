@@ -4,6 +4,7 @@ import { getAllMeta, getRecentArticles, getRandomArticle } from './articles.js';
 import { getAllCategories } from './categories.js';
 import { getAllTags } from './tags.js';
 import { getBookmarks, removeBookmark } from './bookmarks.js';
+import { getAllPaths, getPathStats } from './reading-paths.js';
 import { clearSidebarRight } from './sidebar-right.js';
 
 let navigateFn = null;
@@ -21,6 +22,7 @@ export function renderHome() {
   const tags   = getAllTags();
   const random = getRandomArticle();
   const bookmarks = getBookmarks();
+  const paths = getAllPaths();
 
   // Top 5 tagów
   const topTags = tags.slice(0, 8);
@@ -82,6 +84,28 @@ export function renderHome() {
             ${bookmarks.length > 6 ? `<div style="font-size:.78rem;color:var(--text-faint);padding:6px 0">… i ${bookmarks.length - 6} więcej</div>` : ''}
           ` : `<p class="home-empty-hint">Kliknij ⭐ na artykule aby dodać zakładkę.</p>`}
         </div>
+
+        <!-- Ścieżki czytania -->
+        ${paths.length ? `
+          <div class="home-card" style="grid-column:1/-1">
+            <div class="home-card-header">
+              <h3>🗺 Ścieżki czytania</h3>
+              <button class="btn-small" id="btn-open-paths-home">Wszystkie</button>
+            </div>
+            <div class="home-paths-row">
+              ${paths.slice(0, 4).map(p => {
+                const { total, done, pct } = getPathStats(p);
+                return \`<div class="home-path-card path-nav" data-id="\${p.id}">
+                  <div class="home-path-name">\${escHtml(p.name)}</div>
+                  <div class="path-progress-bar" style="margin:6px 0 4px">
+                    <div class="path-progress-fill" style="width:\${pct}%"></div>
+                  </div>
+                  <div class="home-path-meta">\${done}/\${total} · \${pct}%</div>
+                </div>\`;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
 
         <!-- Ostatnio edytowane -->
         <div class="home-card">
@@ -145,6 +169,11 @@ export function renderHome() {
     if (r) navigateFn('article/' + r.id);
   });
 
+  document.getElementById('btn-open-paths-home')?.addEventListener('click', () => {
+    import('./panel-paths.js').then(m => m.openPathsPanel());
+  });
+  document.querySelectorAll('.path-nav').forEach(el =>
+    el.addEventListener('click', () => navigateFn('path/' + el.dataset.id)));
   document.querySelectorAll('.recent-article').forEach(el =>
     el.addEventListener('click', () => navigateFn('article/' + el.dataset.id)));
 
