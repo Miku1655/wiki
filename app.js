@@ -16,6 +16,7 @@ import { initUI, showToast }    from './ui.js';
 import { renderMarkdown }   from './markdown.js';
 import { openTab, updateTabTitle } from './tabs.js';
 import { initPanelManager, closeAll } from './panels.js';
+import { isBookmarked, toggleBookmark } from './bookmarks.js';
 import { initWikipediaImport } from './wikipedia-modal.js';
 
 // ── INICJALIZACJA ─────────────────────────────────────────
@@ -151,10 +152,15 @@ async function renderArticle(id, hash = '') {
 
   const html = renderMarkdown(article.content || '');
 
+  const bookmarked = isBookmarked(id);
   main.innerHTML = `
     <div id="article-actions">
       <button class="btn-small" id="btn-edit-article">✎ Edytuj</button>
-      <button class="btn-small" id="btn-article-new-tab">↗ Otwórz w nowej karcie</button>
+      <button class="btn-small" id="btn-article-new-tab">↗ Nowa karta</button>
+      <button class="btn-small ${bookmarked ? 'btn-bookmarked' : ''}" id="btn-bookmark-article"
+        title="${bookmarked ? 'Usuń zakładkę' : 'Dodaj do zakładek'}">
+        ${bookmarked ? '⭐' : '☆'} Zakładka
+      </button>
       <span class="spacer"></span>
       <span style="font-size:.78rem;color:var(--text-faint)">
         ${article.updatedAt?.toDate ? formatDate(article.updatedAt.toDate()) : ''}
@@ -177,6 +183,15 @@ async function renderArticle(id, hash = '') {
   document.getElementById('btn-article-new-tab').addEventListener('click', () => {
     navigate('article/' + id, { newTab: true });
     showToast('Otwarto w nowej karcie');
+  });
+
+  document.getElementById('btn-bookmark-article').addEventListener('click', () => {
+    const added = toggleBookmark(id, article.title);
+    const btn = document.getElementById('btn-bookmark-article');
+    btn.innerHTML = added ? '⭐ Zakładka' : '☆ Zakładka';
+    btn.classList.toggle('btn-bookmarked', added);
+    btn.title = added ? 'Usuń zakładkę' : 'Dodaj do zakładek';
+    showToast(added ? 'Dodano do zakładek ⭐' : 'Usunięto zakładkę');
   });
 
   // Wiki-linki → podgląd
@@ -205,17 +220,63 @@ function renderCategoryView(categoryId) {
   clearSidebarRight();
 
   const isUncategorized = categoryId === '__uncategorized__';
-  const articles = isUncategorized
-    ? getAllMeta().filter(a => !a.category)
-    : getAllMeta().filter(a => a.category === categoryId);
 
-  import('./categories.js').then(({ getCategoryName }) => {
+  import('./categories.js').then(({ getCategoryName, getAllCategories }) => {
+    const articles = isUncategorized
+      ? getAllMeta().filter(a => !a.category)
+      : getAllMeta().filter(a => a.category === categoryId);
+
+    // Podkategorie (tylko dla prawdziwych kategorii)
+    const subcats = isUncategorized
+      ? []
+      : getAllCategories().filter(c => c.parentId === categoryId);
+
     const catName = isUncategorized ? 'Nieposegregowane' : getCategoryName(categoryId);
     const icon    = isUncategorized ? '📋' : '📁';
+
+    // Breadcrumb — ścieżka do bieżącej kategorii
+    const buildBreadcrumb = (id) => {
+      if (!id || isUncategorized) return '';
+      const path = [];
+      let cur = getAllCategories().find(c => c.id === id);
+      while (cur) {
+        path.unshift(cur);
+        cur = cur.parentId ? getAllCategories().find(c => c.id === cur.parentId) : null;
+      }
+      if (path.length <= 1) return '';
+      return `<div class="cat-breadcrumb">
+        ${path.map((c, i) => i < path.length - 1
+          ? `<span class="cat-bc-link" data-id="${c.id}">${escHtml(c.name)}</span> <span class="cat-bc-sep">›</span>`
+          : `<span>${escHtml(c.name)}</span>`
+        ).join(' ')}
+      </div>`;
+    };
+
     main.innerHTML = `
-      <div id="view-home" style="padding:36px 48px">
+      <div id="view-home" style="padding:36px 48px;max-width:860px">
+        ${buildBreadcrumb(categoryId)}
         <h1 style="font-family:var(--font-heading);font-size:1.7rem;margin-bottom:20px">${icon} ${escHtml(catName)}</h1>
+
+        ${subcats.length ? `
+          <h3 style="font-family:var(--font-heading);font-size:1rem;font-weight:400;font-style:italic;
+                     color:var(--text-muted);margin-bottom:10px">Podkategorie</h3>
+          <div class="subcat-grid">
+            ${subcats.map(c => `
+              <div class="subcat-card cat-nav" data-id="${c.id}">
+                <span class="subcat-icon">📁</span>
+                <span class="subcat-name">${escHtml(c.name)}</span>
+                <span class="subcat-count">${getAllMeta().filter(a => a.category === c.id).length} art.</span>
+              </div>
+            `).join('')}
+          </div>
+          <div style="height:24px"></div>
+        ` : ''}
+
         ${articles.length ? `
+          <h3 style="font-family:var(--font-heading);font-size:1rem;font-weight:400;font-style:italic;
+                     color:var(--text-muted);margin-bottom:10px">
+            Artykuły (${articles.length})
+          </h3>
           <ul class="recent-list">
             ${articles.map(a => `
               <li>
@@ -224,12 +285,17 @@ function renderCategoryView(categoryId) {
               </li>
             `).join('')}
           </ul>
-        ` : `<div class="empty-state"><div class="empty-icon">📂</div><p>Brak artykułów${isUncategorized ? ' bez kategorii' : ' w tej kategorii'}.</p></div>`}
+        ` : subcats.length ? '' : `<div class="empty-state"><div class="empty-icon">📂</div>
+            <p>Brak artykułów${isUncategorized ? ' bez kategorii' : ' w tej kategorii'}.</p></div>`}
       </div>
     `;
-    document.querySelectorAll('.cat-article').forEach(el => {
-      el.addEventListener('click', () => navigate('article/' + el.dataset.id));
-    });
+
+    document.querySelectorAll('.cat-article').forEach(el =>
+      el.addEventListener('click', () => navigate('article/' + el.dataset.id)));
+    document.querySelectorAll('.cat-nav').forEach(el =>
+      el.addEventListener('click', () => navigate('category/' + el.dataset.id)));
+    document.querySelectorAll('.cat-bc-link').forEach(el =>
+      el.addEventListener('click', () => navigate('category/' + el.dataset.id)));
   });
 }
 
