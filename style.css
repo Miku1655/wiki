@@ -31,7 +31,7 @@
   --shadow-md:    0 4px 16px rgba(0,0,0,.10);
   --shadow-lg:    0 8px 32px rgba(0,0,0,.14);
 
-  --topbar-h:     52px;
+  --topbar-h:     56px;
   --sidebar-l-w:  240px;
   --sidebar-r-w:  240px;
   --panel-w:      360px;
@@ -170,11 +170,62 @@ body {
 #topbar-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex-shrink: 0;
 }
 
-/* ---------- ICON BUTTONS ---------- */
+/* ---------- NAV BUTTONS (icon + label) ---------- */
+.nav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: background var(--transition), color var(--transition);
+  white-space: nowrap;
+  min-width: 52px;
+}
+.nav-btn:hover { background: var(--bg-hover); color: var(--text); }
+.nav-btn.active { color: var(--accent); background: var(--accent-light); }
+
+.nav-btn-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+.nav-btn-label {
+  font-size: .64rem;
+  font-weight: 500;
+  letter-spacing: .02em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* Wyróżniony przycisk "Nowy artykuł" */
+.nav-btn-accent {
+  color: var(--accent);
+}
+.nav-btn-accent:hover {
+  background: var(--accent-light);
+  color: var(--accent-hover);
+}
+
+/* Separator pionowy */
+.nav-btn-sep {
+  width: 1px;
+  height: 26px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+
 .icon-btn {
   width: 34px; height: 34px;
   border: none;
