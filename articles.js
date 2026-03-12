@@ -6,6 +6,55 @@ import { saveMeta, loadMeta, saveArticleContent, loadArticleContent, removeArtic
 // In-memory index metadanych artykułów
 let metaIndex = [];
 
+/**
+ * Odwrócony indeks linków: tytuł (lowercase) → Set<articleId>
+ *
+ * Zamiast skanować treść każdego artykułu przy każdym wywołaniu
+ * getRelatedArticles(), budujemy raz indeks i aktualizujemy go
+ * przy zapisie/usunięciu artykułu. Koszt zapytania: O(1).
+ *
+ * Indeks jest budowany lazy (przy pierwszym użyciu) i inwalidowany
+ * przy zmianach w metaIndex / treściach artykułów.
+ */
+let _linkIndex = null;   // Map<title_lower, Set<articleId>> | null
+
+function getLinkIndex() {
+  if (_linkIndex) return _linkIndex;
+  _linkIndex = new Map();
+
+  for (const article of metaIndex) {
+    const cached = loadArticleContent(article.id);
+    if (!cached?.content) continue;
+    _registerLinks(article.id, cached.content);
+  }
+  return _linkIndex;
+}
+
+/** Rejestruje wszystkie [[wiki-linki]] z treści artykułu w indeksie */
+function _registerLinks(articleId, content) {
+  if (!_linkIndex) _linkIndex = new Map();
+  const re = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    const key = m[1].trim().toLowerCase();
+    if (!_linkIndex.has(key)) _linkIndex.set(key, new Set());
+    _linkIndex.get(key).add(articleId);
+  }
+}
+
+/** Usuwa z indeksu wszystkie linki wychodzące z danego artykułu */
+function _unregisterLinks(articleId) {
+  if (!_linkIndex) return;
+  for (const [, sources] of _linkIndex) {
+    sources.delete(articleId);
+  }
+}
+
+/** Inwaliduje cały indeks (np. po pełnym reload metadanych) */
+function _invalidateLinkIndex() {
+  _linkIndex = null;
+}
+
 // ── INICJALIZACJA ─────────────────────────────────────────
 
 /**
@@ -13,16 +62,15 @@ let metaIndex = [];
  * Najpierw sprawdza cache, potem Firebase.
  */
 export async function loadArticlesMeta() {
-  // Spróbuj cache
   const cached = loadMeta();
   if (cached) {
     metaIndex = cached;
   }
-  // Zawsze odświeżaj z Firebase w tle
   try {
     const fresh = await fetchAllArticlesMeta();
     metaIndex = fresh;
     saveMeta(fresh);
+    _invalidateLinkIndex();   // nowe meta → indeks nieaktualny
   } catch(e) {
     console.warn('Nie można pobrać metadanych z Firebase:', e);
     if (!metaIndex.length) throw e;
@@ -62,13 +110,24 @@ export function getArticlesByTag(tag) {
   return metaIndex.filter(a => a.tags?.includes(tag));
 }
 
-/** Zwraca artykuły, które zawierają link do danego artykułu */
+/**
+ * Zwraca artykuły, które linkują do artykułu o danym tytule.
+ *
+ * OPTYMALIZACJA: zamiast O(n) skanowania treści wszystkich artykułów,
+ * używamy odwróconego indeksu linków (O(1) lookup).
+ * Indeks jest budowany lazy przy pierwszym wywołaniu i inwalidowany
+ * przy zmianach treści (saveArticle / deleteArticle).
+ */
 export function getRelatedArticles(title) {
-  const lower = title.toLowerCase();
-  return metaIndex.filter(a => {
-    const content = loadArticleContent(a.id)?.content || '';
-    return content.toLowerCase().includes(`[[${lower}]]`);
-  }).slice(0, 10);
+  const index   = getLinkIndex();
+  const key     = title.toLowerCase();
+  const sources = index.get(key);
+  if (!sources || !sources.size) return [];
+
+  return [...sources]
+    .map(id => metaIndex.find(a => a.id === id))
+    .filter(Boolean)
+    .slice(0, 10);
 }
 
 // ── POBIERANIE TREŚCI ─────────────────────────────────────
@@ -77,18 +136,23 @@ export function getRelatedArticles(title) {
  * Pobiera pełny artykuł z cache lub Firebase.
  */
 export async function getArticleFull(id) {
-  // Sprawdź cache
   const cached = loadArticleContent(id);
   if (cached) {
-    // Odśwież w tle
+    // Odśwież w tle i zaktualizuj indeks linków
     fetchArticle(id).then(fresh => {
-      if (fresh) saveArticleContent(id, fresh);
+      if (fresh) {
+        _unregisterLinks(id);
+        saveArticleContent(id, fresh);
+        if (fresh.content) _registerLinks(id, fresh.content);
+      }
     }).catch(() => {});
     return cached;
   }
-  // Pobierz z Firebase
   const article = await fetchArticle(id);
-  if (article) saveArticleContent(id, article);
+  if (article) {
+    saveArticleContent(id, article);
+    if (article.content) _registerLinks(id, article.content);
+  }
   return article;
 }
 
@@ -96,8 +160,14 @@ export async function getArticleFull(id) {
 
 export async function saveArticle(article) {
   const id = await storageSave(article);
+
+  // Zaktualizuj indeks linków dla tego artykułu
+  _unregisterLinks(id);
+  if (article.content) _registerLinks(id, article.content);
+
   // Zaktualizuj local cache treści
   saveArticleContent(id, { ...article, id });
+
   // Zaktualizuj index metadanych
   const meta = {
     id,
@@ -116,6 +186,7 @@ export async function saveArticle(article) {
 
 export async function deleteArticle(id) {
   await storageDelete(id);
+  _unregisterLinks(id);
   metaIndex = metaIndex.filter(a => a.id !== id);
   saveMeta(metaIndex);
   removeArticleContent(id);
