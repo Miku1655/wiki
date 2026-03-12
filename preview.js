@@ -10,27 +10,29 @@ export function initPreview(navigateCallback) {
   navigateFn = navigateCallback;
 
   document.getElementById('btn-close-preview').addEventListener('click', hidePreview);
+
   document.getElementById('btn-preview-open').addEventListener('click', () => {
-    if (currentArticleId) {
-      hidePreview();
-      navigateFn('article/' + currentArticleId);
-    }
+    const id = currentArticleId;
+    if (id) { hidePreview(); navigateFn('article/' + id); }
   });
+
   document.getElementById('btn-preview-new-tab').addEventListener('click', () => {
-    if (currentArticleId) {
-      hidePreview();
-      navigateFn('article/' + currentArticleId, { newTab: true });
-    }
+    const id = currentArticleId;
+    if (id) { hidePreview(); navigateFn('article/' + id, { newTab: true }); }
   });
 }
 
 export async function showPreview(articleId, articleTitle) {
+  // Normalizuj — pusty string traktuj jak brak id
+  articleId = articleId || null;
+
   // Jeśli nie mamy id ale mamy tytuł — spróbuj znaleźć artykuł po tytule
   if (!articleId && articleTitle) {
     const found = getArticleByTitle(articleTitle);
     if (found) articleId = found.id;
   }
 
+  // Ustaw currentArticleId dopiero po rozwiązaniu — przyciski Otwórz/Nowa karta będą miały poprawne id
   currentArticleId = articleId;
   const panel = document.getElementById('panel-preview');
   const overlay = document.getElementById('panel-overlay');
