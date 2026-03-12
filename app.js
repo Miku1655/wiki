@@ -14,7 +14,7 @@ import { renderHome, initHome }  from './home.js';
 import { renderEditor, initEditor } from './editor.js';
 import { initUI, showToast }    from './ui.js';
 import { renderMarkdown }   from './markdown.js';
-import { openTab, updateTabTitle } from './tabs.js';
+import { navigateTab, openNewTab, closeTab, switchTab, getTabs, getActiveTabId, onTabsChange } from './tabs.js';
 import { initPanelManager, closeAll } from './panels.js';
 import { isBookmarked, toggleBookmark } from './bookmarks.js';
 import { initWikipediaImport } from './wikipedia-modal.js';
@@ -76,8 +76,17 @@ async function loadData() {
  * route: 'home' | 'article/:id' | 'editor/:id' | 'history' | 'category/:id' | 'tag/:name'
  * options: { newTab, prefillTitle }
  */
+// Czy nawigacja pochodzi z wnętrza artykułu (wiki-link)?
+// true  → nawiguj w tej samej karcie
+// false → otwórz nową kartę (nawigacja z zewnątrz: sidebar, search, home…)
+let _navigatingFromArticle = false;
+
+export function navigateFromArticle(route, options = {}) {
+  _navigatingFromArticle = true;
+  return navigate(route, options);
+}
+
 export async function navigate(route, options = {}) {
-  // Wyczyść hash z route jeśli jest
   const [baseRoute, hash] = route.split('#');
   route = baseRoute;
 
@@ -85,15 +94,24 @@ export async function navigate(route, options = {}) {
   const view  = parts[0];
   const param = parts.slice(1).join('/');
 
-  // Zamknij panele przy każdej nawigacji (nie przy podglądzie)
   if (view !== 'preview') closeAll();
 
-  // Obsługa nowej karty
-  if (options.newTab && view === 'article') {
-    openTab(route, getMetaById(param)?.title || 'Artykuł');
+  // ── Logika kart ──────────────────────────────────────────
+  // Artykuł otwierany z zewnątrz (sidebar, home, search) → nowa karta
+  // Artykuł otwierany przez wiki-link wewnątrz artykułu  → ta sama karta
+  // Jawne "nowa karta" (przycisk ↗)                       → zawsze nowa
+  if (view === 'article') {
+    const title = getMetaById(param)?.title || 'Artykuł';
+    if (options.newTab) {
+      openNewTab(route, title);                 // jawna nowa karta
+    } else if (_navigatingFromArticle || options.fromPreview) {
+      navigateTab(route, title);                // ta sama karta (wiki-link lub podgląd → otwórz)
+    } else {
+      openNewTab(route, title);                 // nowa karta (z zewnątrz)
+    }
   }
+  _navigatingFromArticle = false; // reset po użyciu
 
-  // Render odpowiedniego widoku
   switch(view) {
     case 'home':
       renderHome();
@@ -154,9 +172,6 @@ async function renderArticle(id, hash = '') {
   // Loguj w historii
   logView(id, article.title);
 
-  // Rejestruj kartę
-  openTab('article/' + id, article.title);
-
   const html = renderMarkdown(article.content || '');
 
   const bookmarked = isBookmarked(id);
@@ -201,9 +216,14 @@ async function renderArticle(id, hash = '') {
     showToast(added ? 'Dodano do zakładek ⭐' : 'Usunięto zakładkę');
   });
 
-  // Wiki-linki → podgląd
+  // Wiki-linki → podgląd (lewy klik) lub nawigacja w tej samej karcie (Ctrl+klik)
   document.querySelectorAll('.wiki-link').forEach(el => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl+klik → nowa karta
+        if (el.dataset.articleId) navigate('article/' + el.dataset.articleId, { newTab: true });
+        return;
+      }
       showPreview(el.dataset.articleId || null, el.dataset.articleTitle);
     });
   });

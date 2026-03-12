@@ -1,43 +1,75 @@
-// tabs.js — Zarządzanie kartami (otwarte artykuły)
+// tabs.js — Zarządzanie kartami (zachowanie jak w przeglądarce)
+//
+// Zasada:
+//   navigateTab(route, title)  — nawiguj w AKTYWNEJ karcie (ta sama karta)
+//   openNewTab(route, title)   — zawsze otwiera NOWĄ kartę
+//
+// Nowa karta powstaje tylko gdy:
+//   1. Nie ma żadnej aktywnej karty (pierwsza wizyta)
+//   2. Jawne żądanie: przycisk "Otwórz w nowej karcie", Ctrl+klik itp.
+//   3. Widoki nie-artykułowe (home, history, category…) NIE tworzą kart
+//      — karta artykułu "pamięta" że jesteśmy gdzie indziej, ale zostaje
 
 const MAX_TABS = 20;
-let tabs = [];        // [{ id, title, route }]
+
+let tabs        = [];   // [{ id, title, route }]
 let activeTabId = null;
 
 const listeners = [];
+function notify() { listeners.forEach(fn => fn([...tabs], activeTabId)); }
 
-function notify() {
-  listeners.forEach(fn => fn(tabs, activeTabId));
+export function onTabsChange(fn) { listeners.push(fn); }
+export function getTabs()        { return tabs; }
+export function getActiveTabId() { return activeTabId; }
+
+// ── NAWIGACJA W AKTYWNEJ KARCIE ───────────────────────────
+
+/**
+ * Nawiguj w aktywnej karcie.
+ * Jeśli nie ma żadnej karty → tworzy pierwszą.
+ * Jeśli aktywna karta już pokazuje ten route → nic nie robi (poza notify).
+ */
+export function navigateTab(route, title) {
+  if (!tabs.length || !activeTabId) {
+    // Brak kart — utwórz pierwszą
+    return _createTab(route, title);
+  }
+
+  const active = tabs.find(t => t.id === activeTabId);
+  if (!active) return _createTab(route, title);
+
+  // Zaktualizuj route i tytuł aktywnej karty
+  active.route = route;
+  active.title = title || active.title;
+  notify();
+  return activeTabId;
 }
 
-export function onTabsChange(fn) {
-  listeners.push(fn);
-}
+// ── OTWIERANIE NOWEJ KARTY ────────────────────────────────
 
-export function openTab(route, title) {
-  // Sprawdź czy już otwarta
+/**
+ * Zawsze otwiera nową kartę (lub aktywuje istniejącą z tym samym route).
+ * Używaj przy jawnym żądaniu użytkownika.
+ */
+export function openNewTab(route, title) {
+  // Jeśli taka karta już istnieje — po prostu ją aktywuj
   const existing = tabs.find(t => t.route === route);
   if (existing) {
     activeTabId = existing.id;
     notify();
     return existing.id;
   }
-  // Ogranicz liczbę kart
-  if (tabs.length >= MAX_TABS) {
-    tabs.shift(); // usuń najstarszą
-  }
-  const id = Date.now().toString();
-  tabs.push({ id, title, route });
-  activeTabId = id;
-  notify();
-  return id;
+  return _createTab(route, title);
 }
+
+// ── ZAMYKANIE / PRZEŁĄCZANIE ──────────────────────────────
 
 export function closeTab(id) {
   const idx = tabs.findIndex(t => t.id === id);
   if (idx === -1) return null;
+
   tabs.splice(idx, 1);
-  // Jeśli zamknięto aktywną — aktywuj sąsiednią
+
   if (activeTabId === id) {
     if (tabs.length) {
       activeTabId = tabs[Math.max(0, idx - 1)].id;
@@ -61,10 +93,13 @@ export function switchTab(id) {
   return tab.route;
 }
 
-export function updateTabTitle(route, title) {
-  const tab = tabs.find(t => t.route === route);
-  if (tab) { tab.title = title; notify(); }
-}
+// ── PRYWATNE ─────────────────────────────────────────────
 
-export function getTabs() { return tabs; }
-export function getActiveTabId() { return activeTabId; }
+function _createTab(route, title) {
+  if (tabs.length >= MAX_TABS) tabs.shift();
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  tabs.push({ id, title: title || 'Artykuł', route });
+  activeTabId = id;
+  notify();
+  return id;
+}

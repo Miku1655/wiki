@@ -14,7 +14,8 @@ export function initPreview(navigateCallback) {
 
   document.getElementById('btn-preview-open').addEventListener('click', () => {
     const id = currentArticleId;
-    if (id) { hidePreview(); navigateFn('article/' + id); }
+    // Otwórz w tej samej karcie — nawigacja z podglądu traktowana jak wiki-link
+    if (id) { hidePreview(); navigateFn('article/' + id, { fromPreview: true }); }
   });
 
   document.getElementById('btn-preview-new-tab').addEventListener('click', () => {
