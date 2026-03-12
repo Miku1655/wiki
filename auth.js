@@ -1,6 +1,6 @@
-// auth.js — Logowanie przez Google (Firebase Auth)
-// Na mobile używa signInWithRedirect (popup blokowany przez Safari/Chrome iOS),
-// na desktopie signInWithPopup dla lepszego UX.
+// auth.js — Logowanie przez Google oraz Email/Hasło (Firebase Auth)
+// Na mobile używa signInWithRedirect, na desktopie signInWithPopup.
+// Ten sam email działa dla obu metod — konta są automatycznie łączone.
 
 import {
   GoogleAuthProvider,
@@ -8,24 +8,28 @@ import {
   signInWithRedirect,
   getRedirectResult,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
+  linkWithCredential,
+  EmailAuthProvider,
+  sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const provider = new GoogleAuthProvider();
 let currentUser = null;
 const listeners = [];
 
-/** Zwraca true jeśli jesteśmy na urządzeniu mobilnym / przeglądarce bez popupów */
 function isMobile() {
   return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-    || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent)); // iPad na iOS 13+
+    || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
 }
 
 export function initAuth() {
-  const auth     = window.__auth;
-  const btnAuth  = document.getElementById('btn-auth');
+  const auth      = window.__auth;
+  const btnAuth   = document.getElementById('btn-auth');
   const modalAuth = document.getElementById('modal-auth');
-  const btnLogin = document.getElementById('btn-google-login');
 
   // ── Obserwuj stan logowania ────────────────────────────
   onAuthStateChanged(auth, user => {
@@ -34,19 +38,13 @@ export function initAuth() {
     listeners.forEach(fn => fn(user));
   });
 
-  // ── Po powrocie z redirectu — odbierz wynik ────────────
-  // Musi być wywołane przy każdym ładowaniu strony; na desktop zwraca null.
+  // ── Po powrocie z redirectu ────────────────────────────
   getRedirectResult(auth)
     .then(result => {
-      if (result?.user) {
-        // Pomyślne logowanie przez redirect — modalAuth już zakrywa widok,
-        // onAuthStateChanged wywoła się sam i zamknie modal.
-        modalAuth.classList.add('hidden');
-      }
+      if (result?.user) modalAuth.classList.add('hidden');
     })
     .catch(e => {
       console.error('Redirect login error:', e);
-      // Pokaż modal z komunikatem błędu zamiast wyrzucać alert
       showAuthError(e.message);
     });
 
@@ -55,46 +53,21 @@ export function initAuth() {
     if (currentUser) {
       if (confirm('Wylogować się?')) signOut(auth);
     } else {
-      modalAuth.classList.remove('hidden');
+      openModal();
     }
   });
 
-  // ── Przycisk logowania w modalu ───────────────────────
-  btnLogin.addEventListener('click', async () => {
-    clearAuthError();
-    if (isMobile()) {
-      // Na mobile: redirect — przeglądarka wróci po autoryzacji
-      try {
-        showLoginLoading(btnLogin, true);
-        await signInWithRedirect(auth, provider);
-        // Dalsze wykonanie po tym await nie nastąpi — strona się przeładuje
-      } catch (e) {
-        showLoginLoading(btnLogin, false);
-        showAuthError(e.message);
-        console.error('Redirect init error:', e);
-      }
-    } else {
-      // Na desktopie: popup
-      try {
-        showLoginLoading(btnLogin, true);
-        await signInWithPopup(auth, provider);
-        modalAuth.classList.add('hidden');
-      } catch (e) {
-        showLoginLoading(btnLogin, false);
-        console.error('Popup login error:', e);
-        if (e.code === 'auth/popup-blocked') {
-          // Fallback: popup zablokowany — spróbuj redirectem
-          try {
-            await signInWithRedirect(auth, provider);
-          } catch (e2) {
-            showAuthError(e2.message);
-          }
-        } else if (e.code !== 'auth/popup-closed-by-user') {
-          showAuthError(e.message);
-        }
-      }
-    }
-  });
+  // ── Zakładki ──────────────────────────────────────────
+  document.getElementById('auth-tab-google').addEventListener('click', () => switchTab('google'));
+  document.getElementById('auth-tab-email').addEventListener('click',  () => switchTab('email'));
+
+  // ── Google ────────────────────────────────────────────
+  document.getElementById('btn-google-login').addEventListener('click', () => handleGoogleLogin(auth, modalAuth));
+
+  // ── Email / hasło ─────────────────────────────────────
+  document.getElementById('btn-email-login').addEventListener('click',    () => handleEmailLogin(auth, modalAuth));
+  document.getElementById('btn-email-register').addEventListener('click', () => handleEmailRegister(auth, modalAuth));
+  document.getElementById('btn-forgot-password').addEventListener('click', () => handleForgotPassword(auth));
 
   // ── Zamknij modal kliknięciem tła ─────────────────────
   modalAuth.addEventListener('click', e => {
@@ -102,23 +75,166 @@ export function initAuth() {
   });
 }
 
-export function onAuthChange(fn) {
-  listeners.push(fn);
+// ── ZAKŁADKI MODALU ───────────────────────────────────────
+
+function openModal() {
+  document.getElementById('modal-auth').classList.remove('hidden');
+  switchTab('google');
+  clearAuthError();
 }
 
-export function getUser() {
-  return currentUser;
+function switchTab(tab) {
+  const isGoogle = tab === 'google';
+  document.getElementById('auth-tab-google').classList.toggle('auth-tab-active', isGoogle);
+  document.getElementById('auth-tab-email').classList.toggle('auth-tab-active', !isGoogle);
+  document.getElementById('auth-section-google').classList.toggle('hidden', !isGoogle);
+  document.getElementById('auth-section-email').classList.toggle('hidden',  isGoogle);
+  clearAuthError();
 }
+
+// ── GOOGLE LOGIN ──────────────────────────────────────────
+
+async function handleGoogleLogin(auth, modalAuth) {
+  clearAuthError();
+  if (isMobile()) {
+    try {
+      showBtnLoading('btn-google-login', true, 'Zaloguj przez Google');
+      await signInWithRedirect(auth, provider);
+    } catch(e) {
+      showBtnLoading('btn-google-login', false, 'Zaloguj przez Google');
+      showAuthError(e.message);
+    }
+  } else {
+    try {
+      showBtnLoading('btn-google-login', true, 'Zaloguj przez Google');
+      await signInWithPopup(auth, provider);
+      modalAuth.classList.add('hidden');
+    } catch(e) {
+      showBtnLoading('btn-google-login', false, 'Zaloguj przez Google');
+      if (e.code === 'auth/popup-blocked') {
+        try { await signInWithRedirect(auth, provider); } catch(e2) { showAuthError(e2.message); }
+      } else if (e.code !== 'auth/popup-closed-by-user') {
+        showAuthError(e.message);
+      }
+    }
+  }
+}
+
+// ── EMAIL LOGIN ───────────────────────────────────────────
+
+async function handleEmailLogin(auth, modalAuth) {
+  clearAuthError();
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+
+  if (!email || !password) { showAuthError('Wypełnij email i hasło.'); return; }
+
+  showBtnLoading('btn-email-login', true, 'Zaloguj');
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    modalAuth.classList.add('hidden');
+  } catch(e) {
+    showBtnLoading('btn-email-login', false, 'Zaloguj');
+    if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
+      showAuthError('Nieprawidłowy email lub hasło.');
+    } else if (e.code === 'auth/wrong-password') {
+      showAuthError('Nieprawidłowe hasło.');
+    } else {
+      showAuthError(e.message);
+    }
+  }
+}
+
+// ── EMAIL REJESTRACJA ─────────────────────────────────────
+// Jeśli email istnieje już w Google → łączy konta (account linking).
+
+async function handleEmailRegister(auth, modalAuth) {
+  clearAuthError();
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+
+  if (!email || !password) { showAuthError('Wypełnij email i hasło.'); return; }
+  if (password.length < 6) { showAuthError('Hasło musi mieć co najmniej 6 znaków.'); return; }
+
+  showBtnLoading('btn-email-register', true, 'Zarejestruj');
+  try {
+    // Sprawdź czy email jest już zarejestrowany (np. przez Google)
+    const methods = await fetchSignInMethodsForEmail(auth, email);
+
+    if (methods.includes('google.com') && !methods.includes('password')) {
+      // Konto Google z tym emailem istnieje — zaloguj przez Google i połącz
+      showAuthError('Ten email jest powiązany z kontem Google. Zaloguj się przez Google — hasło zostanie dodane automatycznie.');
+      showBtnLoading('btn-email-register', false, 'Zarejestruj');
+
+      // Zaloguj Googlem, potem linkuj email/hasło
+      try {
+        const result = isMobile()
+          ? await signInWithRedirect(auth, provider)
+          : await signInWithPopup(auth, provider);
+
+        if (result?.user) {
+          const credential = EmailAuthProvider.credential(email, password);
+          await linkWithCredential(result.user, credential);
+          modalAuth.classList.add('hidden');
+          clearAuthError();
+        }
+      } catch(linkErr) {
+        showAuthError('Nie udało się połączyć kont: ' + linkErr.message);
+      }
+      return;
+    }
+
+    // Normalny zapis email/hasło
+    await createUserWithEmailAndPassword(auth, email, password);
+    modalAuth.classList.add('hidden');
+
+  } catch(e) {
+    showBtnLoading('btn-email-register', false, 'Zarejestruj');
+    if (e.code === 'auth/email-already-in-use') {
+      showAuthError('Konto z tym emailem już istnieje. Zaloguj się zamiast rejestrować.');
+    } else if (e.code === 'auth/invalid-email') {
+      showAuthError('Nieprawidłowy adres email.');
+    } else if (e.code === 'auth/weak-password') {
+      showAuthError('Hasło jest za słabe (minimum 6 znaków).');
+    } else {
+      showAuthError(e.message);
+    }
+  }
+}
+
+// ── RESET HASŁA ───────────────────────────────────────────
+
+async function handleForgotPassword(auth) {
+  clearAuthError();
+  const email = document.getElementById('auth-email').value.trim();
+  if (!email) { showAuthError('Wpisz adres email w polu powyżej.'); return; }
+
+  try {
+    await sendPasswordResetEmail(auth, email);
+    showAuthError('✓ Link do resetowania hasła został wysłany na ' + email, true);
+  } catch(e) {
+    if (e.code === 'auth/user-not-found') {
+      showAuthError('Nie znaleziono konta z tym adresem email.');
+    } else {
+      showAuthError(e.message);
+    }
+  }
+}
+
+// ── PUBLICZNE API ─────────────────────────────────────────
+
+export function onAuthChange(fn) { listeners.push(fn); }
+export function getUser()        { return currentUser; }
 
 export function requireAuth() {
   if (!currentUser) {
-    document.getElementById('modal-auth').classList.remove('hidden');
+    openModal();
     return false;
   }
   return true;
 }
 
-// ── UI helpers ────────────────────────────────────────────
+// ── UI HELPERS ────────────────────────────────────────────
 
 function updateAuthUI(user) {
   const btn = document.getElementById('btn-auth');
@@ -133,21 +249,24 @@ function updateAuthUI(user) {
   }
 }
 
-function showLoginLoading(btn, loading) {
-  btn.disabled = loading;
-  btn.textContent = loading ? 'Przekierowuję…' : 'Zaloguj przez Google';
+function showBtnLoading(btnId, loading, label) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled    = loading;
+  btn.textContent = loading ? 'Ładowanie…' : label;
 }
 
-function showAuthError(msg) {
+function showAuthError(msg, isSuccess = false) {
   const modal = document.getElementById('modal-auth');
   let errEl = modal.querySelector('.auth-error');
   if (!errEl) {
     errEl = document.createElement('p');
     errEl.className = 'auth-error';
-    errEl.style.cssText = 'color:var(--danger,#e55);font-size:.85rem;margin-top:10px;text-align:center';
     modal.querySelector('.modal-box').appendChild(errEl);
   }
-  errEl.textContent = 'Błąd logowania: ' + msg;
+  errEl.textContent = msg;
+  errEl.style.cssText = `font-size:.85rem;margin-top:8px;text-align:center;
+    color:${isSuccess ? 'var(--accent)' : 'var(--danger,#e55)'};`;
 }
 
 function clearAuthError() {
