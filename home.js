@@ -25,13 +25,13 @@ export function renderHome() {
   const paths     = getAllPaths();
   const topTags   = tags.slice(0, 8);
 
-  main.innerHTML = buildHome({ meta, recent, cats, topTags, random, bookmarks, paths });
+  main.innerHTML = buildHome({ meta, recent, cats, tags, topTags, random, bookmarks, paths });
   bindEvents();
 }
 
 // ── BUILDER FUNCTIONS (bez zagnieżdżonych template literals) ──
 
-function buildHome({ meta, recent, cats, topTags, random, bookmarks, paths }) {
+function buildHome({ meta, recent, cats, tags, topTags, random, bookmarks, paths }) {
   const parts = [];
 
   parts.push('<div id="view-home">');
