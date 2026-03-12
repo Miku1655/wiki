@@ -1,6 +1,6 @@
 // editor.js — Edytor artykułów z toolbarem i podglądem na żywo
 
-import { getArticleFull, saveArticle, deleteArticle } from './articles.js';
+import { getArticleFull, saveArticle, deleteArticle, getAllMeta } from './articles.js';
 import { renderMarkdown } from './markdown.js';
 import { getCategoryOptions } from './categories.js';
 import { parseTags, formatTags } from './tags.js';
@@ -189,7 +189,14 @@ function bindEvents(articleId) {
     setDirtyStatus();
     clearTimeout(livePreviewTimeout);
     livePreviewTimeout = setTimeout(updateLivePreview, 250);
+    handleWikiAutocomplete(textarea);
   });
+
+  textarea.addEventListener('keydown', e => {
+    if (wikiAcActive()) handleWikiAcKeydown(e);
+  }, true); // capture — przed handleKeydown
+
+  textarea.addEventListener('blur', () => hideWikiAc());
   document.getElementById('editor-title').addEventListener('input', () => {
     isDirty = true;
     setDirtyStatus();
@@ -494,4 +501,143 @@ async function handleDelete() {
 
 function escHtml(str) {
   return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── WIKI-LINK AUTOCOMPLETE ────────────────────────────────
+
+let acDropdown = null;
+let acSelected = -1;
+let acItems    = [];
+let acBracketIdx = -1;
+
+export function wikiAcActive() { return acDropdown && acDropdown.style.display !== 'none'; }
+
+function handleWikiAutocomplete(ta) {
+  const pos    = ta.selectionStart;
+  const before = ta.value.slice(0, pos);
+
+  // Szukaj ostatniego [[ bez zamknięcia ]]
+  const bracketIdx = before.lastIndexOf('[[');
+  if (bracketIdx === -1) { hideWikiAc(); return; }
+  const afterBracket = before.slice(bracketIdx + 2);
+  if (afterBracket.includes(']]') || afterBracket.includes('
+') || afterBracket.includes('|')) {
+    hideWikiAc(); return;
+  }
+
+  const query = afterBracket;
+  if (!query) { hideWikiAc(); return; }
+
+  const q = query.toLowerCase();
+  acItems = getAllMeta().filter(a => a.title.toLowerCase().includes(q)).slice(0, 8);
+  if (!acItems.length) { hideWikiAc(); return; }
+
+  acBracketIdx = bracketIdx;
+  showWikiAc(ta, acItems);
+}
+
+function showWikiAc(ta, items) {
+  if (!acDropdown) {
+    acDropdown = document.createElement('div');
+    acDropdown.id = 'wiki-ac-dropdown';
+    document.body.appendChild(acDropdown);
+  }
+  acSelected = 0;
+  acDropdown.innerHTML = items.map((a, i) =>
+    `<div class="wiki-ac-item${i === 0 ? ' selected' : ''}" data-idx="${i}">${escHtml(a.title)}</div>`
+  ).join('');
+  acDropdown.querySelectorAll('.wiki-ac-item').forEach(el => {
+    el.addEventListener('mousedown', e => { e.preventDefault(); acceptWikiAc(ta, parseInt(el.dataset.idx)); });
+    el.addEventListener('mouseover', () => { acSelected = parseInt(el.dataset.idx); updateAcSelection(); });
+  });
+  positionAcDropdown(ta);
+  acDropdown.style.display = 'block';
+}
+
+function positionAcDropdown(ta) {
+  if (!acDropdown) return;
+  const rect = ta.getBoundingClientRect();
+  // Pozycja kursora w textarea (heurystyka)
+  const coords = getCaretCoords(ta);
+  if (coords) {
+    let left = rect.left + coords.left;
+    let top  = rect.top  + coords.top + 22;
+    // Nie wychodź poza ekran
+    acDropdown.style.display = 'block';
+    const ddW = acDropdown.offsetWidth || 260;
+    if (left + ddW > window.innerWidth - 8) left = window.innerWidth - ddW - 8;
+    acDropdown.style.left = left + 'px';
+    acDropdown.style.top  = top  + 'px';
+  } else {
+    acDropdown.style.left = (rect.left + 40) + 'px';
+    acDropdown.style.top  = (rect.top + 60) + 'px';
+  }
+}
+
+function getCaretCoords(ta) {
+  try {
+    const div   = document.createElement('div');
+    const style = window.getComputedStyle(ta);
+    ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing',
+     'paddingTop','paddingLeft','paddingRight','paddingBottom',
+     'borderTopWidth','borderLeftWidth','whiteSpace','wordWrap',
+     'overflowWrap','width','boxSizing'].forEach(p => { div.style[p] = style[p]; });
+    div.style.position   = 'absolute';
+    div.style.visibility = 'hidden';
+    div.style.whiteSpace = 'pre-wrap';
+    div.style.wordBreak  = 'break-word';
+    div.style.height     = 'auto';
+    const pre  = document.createTextNode(ta.value.slice(0, ta.selectionStart));
+    const span = document.createElement('span');
+    span.textContent = '|';
+    div.appendChild(pre);
+    div.appendChild(span);
+    document.body.appendChild(div);
+    const coords = {
+      left: span.offsetLeft - ta.scrollLeft,
+      top:  span.offsetTop  - ta.scrollTop
+    };
+    div.remove();
+    return coords;
+  } catch { return null; }
+}
+
+function handleWikiAcKeydown(e) {
+  if (e.key === 'ArrowDown')  { e.preventDefault(); e.stopPropagation(); acSelected = Math.min(acSelected + 1, acItems.length - 1); updateAcSelection(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); acSelected = Math.max(acSelected - 1, 0); updateAcSelection(); }
+  else if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault(); e.stopPropagation();
+    const ta = document.getElementById('editor-textarea');
+    if (ta && acSelected >= 0) acceptWikiAc(ta, acSelected);
+  }
+  else if (e.key === 'Escape') { e.preventDefault(); hideWikiAc(); }
+}
+
+function updateAcSelection() {
+  if (!acDropdown) return;
+  acDropdown.querySelectorAll('.wiki-ac-item').forEach((el, i) =>
+    el.classList.toggle('selected', i === acSelected));
+  acDropdown.querySelector('.wiki-ac-item.selected')?.scrollIntoView({ block: 'nearest' });
+}
+
+function acceptWikiAc(ta, idx) {
+  const item = acItems[idx];
+  if (!item) return;
+  const pos    = ta.selectionStart;
+  const before = ta.value.slice(0, acBracketIdx);
+  const after  = ta.value.slice(pos);
+  const insert = `[[${item.title}]]`;
+  ta.value = before + insert + after;
+  const newPos = acBracketIdx + insert.length;
+  ta.setSelectionRange(newPos, newPos);
+  ta.focus();
+  hideWikiAc();
+  isDirty = true; setDirtyStatus();
+  clearTimeout(livePreviewTimeout);
+  livePreviewTimeout = setTimeout(updateLivePreview, 150);
+}
+
+function hideWikiAc() {
+  if (acDropdown) acDropdown.style.display = 'none';
+  acSelected = -1; acItems = []; acBracketIdx = -1;
 }
