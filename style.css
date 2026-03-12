@@ -1372,3 +1372,61 @@ body {
   #view-home, #view-article, #view-history { padding: 20px 18px; }
   .home-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- PATH GROUP HEADER ---------- */
+.path-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  margin: 16px 0 4px;
+  border-bottom: 2px solid var(--border);
+  background: transparent;
+  cursor: default;
+  user-select: none;
+}
+.path-group-header:first-child { margin-top: 4px; }
+.path-group-icon { font-size: .9rem; flex-shrink: 0; }
+.path-group-title {
+  font-family: var(--font-heading);
+  font-size: .97rem;
+  font-weight: 600;
+  font-style: italic;
+  color: var(--text-muted);
+  flex: 1;
+}
+.path-group-header .path-item-actions {
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.path-group-header:hover .path-item-actions { opacity: 1; }
+.path-group-header.dragging { opacity: .4; }
+
+/* ---------- BULK EDIT TOOLBAR ---------- */
+.bulk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  margin-bottom: 14px;
+  background: var(--accent-light);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  flex-wrap: wrap;
+}
+.bulk-toolbar #bulk-count {
+  font-size: .85rem;
+  font-weight: 500;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* Checkbox w liście artykułów */
+.bulk-checkbox-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  margin-right: 2px;
+}
+.bulk-checkbox { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
