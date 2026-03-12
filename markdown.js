@@ -33,13 +33,16 @@ export function renderMarkdown(text, onLinkClick) {
   html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,
     '<img src="$2" alt="$1" loading="lazy" />');
 
-  // [[Wiki-linki]]
-  html = html.replace(/\[\[([^\]]+)\]\]/g, (_, title) => {
+  // [[Wiki-linki]] z opcjonalnym aliasem [[Cel|wyświetlany tekst]]
+  html = html.replace(/\[\[([^\]]+)\]\]/g, (_, inner) => {
+    const [titlePart, aliasPart] = inner.split('|');
+    const title   = titlePart.trim();
+    const display = aliasPart ? aliasPart.trim() : title;
     const article = getArticleByTitle(title);
     const cls = article ? 'wiki-link' : 'wiki-link missing';
     const id  = article ? article.id : '';
     const tip = article ? '' : ' title="Artykuł nie istnieje"';
-    return `<span class="${cls}" data-article-id="${id}" data-article-title="${title}"${tip}>${title}</span>`;
+    return `<span class="${cls}" data-article-id="${id}" data-article-title="${title}"${tip}>${display}</span>`;
   });
 
   // Linki [text](url)

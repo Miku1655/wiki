@@ -370,10 +370,13 @@ body {
 .random-card .random-title { font-family: var(--font-heading); font-size: 1.2rem; }
 
 /* Article view */
-#view-article { padding: 36px 48px; max-width: 760px; }
+#view-article { padding: 36px 48px; max-width: 100%; }
 #view-article h1 { font-family: var(--font-heading); font-size: 1.9rem; margin-bottom: 6px; line-height: 1.25; }
 .article-meta { font-size: .8rem; color: var(--text-faint); margin-bottom: 28px; display: flex; gap: 14px; flex-wrap: wrap; }
 .article-meta span { display: flex; align-items: center; gap: 4px; }
+
+/* Wrapper artykułu — ogranicza szerokość tekstu dla czytelności */
+#view-article .md-content { max-width: 780px; }
 
 /* Markdown content */
 .md-content { font-size: .95rem; line-height: 1.75; }
@@ -745,6 +748,58 @@ body {
 }
 .empty-state .empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
 .empty-state p { font-size: .9rem; }
+
+/* ---------- TAG PANEL ---------- */
+.tag-panel-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-light);
+  transition: background var(--transition);
+}
+.tag-panel-item:hover { background: var(--bg-hover); }
+.tag-panel-name { font-size: .88rem; color: var(--accent); }
+.tag-panel-count {
+  font-size: .75rem;
+  color: var(--text-faint);
+  background: var(--bg-panel);
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+}
+
+/* ---------- HISTORY DELETE BUTTONS ---------- */
+.history-date-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.btn-delete-day {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: .75rem;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition), color var(--transition);
+}
+.btn-delete-day:hover { background: var(--bg-active); color: #c0392b; }
+.h-delete {
+  background: none;
+  border: none;
+  color: transparent;
+  cursor: pointer;
+  font-size: .75rem;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition), background var(--transition);
+  margin-left: auto;
+}
+.history-item:hover .h-delete { color: var(--text-faint); }
+.h-delete:hover { background: var(--bg-active); color: #c0392b !important; }
 
 /* ---------- SCROLLBAR ---------- */
 ::-webkit-scrollbar { width: 6px; height: 6px; }

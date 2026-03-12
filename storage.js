@@ -92,6 +92,11 @@ export async function addHistoryEntry(articleId, articleTitle) {
   });
 }
 
+/** Usuwa pojedynczy wpis z historii */
+export async function deleteHistoryEntry(id) {
+  await deleteDoc(doc(db(), 'history', id));
+}
+
 /** Pobiera historię przeglądania (ostatnie N wpisów) */
 export async function fetchHistory(limitN = 200) {
   const q = query(

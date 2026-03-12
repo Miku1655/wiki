@@ -25,6 +25,12 @@ export function initPreview(navigateCallback) {
 }
 
 export async function showPreview(articleId, articleTitle) {
+  // Jeśli nie mamy id ale mamy tytuł — spróbuj znaleźć artykuł po tytule
+  if (!articleId && articleTitle) {
+    const found = getArticleByTitle(articleTitle);
+    if (found) articleId = found.id;
+  }
+
   currentArticleId = articleId;
   const panel = document.getElementById('panel-preview');
   const overlay = document.getElementById('panel-overlay');
