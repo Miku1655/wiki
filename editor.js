@@ -504,11 +504,10 @@ function escHtml(str) {
 // Podgląd ma elementy z data-line. Interpolujemy między nimi.
 
 function getTopLineOfTextarea(ta) {
-  // Której linii tekst jest przy górnej krawędzi scrollu?
   const lineHeight = parseFloat(window.getComputedStyle(ta).lineHeight) || 20;
   const paddingTop = parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
-  const line = Math.floor((ta.scrollTop - paddingTop) / lineHeight);
-  return Math.max(0, line);
+  // Zachowaj frakcję — kluczowe dla płynnej interpolacji
+  return Math.max(0, (ta.scrollTop - paddingTop) / lineHeight);
 }
 
 function getLineTopInTextarea(ta, lineNum) {
@@ -518,15 +517,41 @@ function getLineTopInTextarea(ta, lineNum) {
 }
 
 function getAnnotatedBlocks(previewPane) {
-  // Zwraca posortowane bloki z data-line z ich offsetTop względem pane
-  const paneTop = previewPane.getBoundingClientRect().top + previewPane.scrollTop;
+  // Zwraca bloki z data-line z ich offsetTop względem początku scrollowalnej zawartości.
+  // Używamy offsetTop elementu względem previewPane (pomija aktualny scrollTop).
   return [...previewPane.querySelectorAll('[data-line]')]
-    .map(el => ({
-      line:   parseInt(el.dataset.line),
-      top:    el.getBoundingClientRect().top - previewPane.getBoundingClientRect().top + previewPane.scrollTop
-    }))
+    .map(el => {
+      // Suma offsetTop w górę drzewa aż do previewPane
+      let top = 0;
+      let node = el;
+      while (node && node !== previewPane) {
+        top += node.offsetTop;
+        node = node.offsetParent;
+      }
+      return { line: parseInt(el.dataset.line), top };
+    })
     .filter(b => !isNaN(b.line))
     .sort((a, b) => a.line - b.line);
+}
+
+function interpolateBlocks(blocks, value, fromKey, toKey) {
+  // Ogólna interpolacja: dany value z przestrzeni fromKey → toKey
+  if (blocks.length === 0) return 0;
+  if (blocks.length === 1) return blocks[0][toKey];
+
+  // Poza zakresem
+  if (value <= blocks[0][fromKey]) return blocks[0][toKey];
+  if (value >= blocks[blocks.length - 1][fromKey]) return blocks[blocks.length - 1][toKey];
+
+  for (let i = 0; i < blocks.length - 1; i++) {
+    const a = blocks[i], b = blocks[i + 1];
+    if (value >= a[fromKey] && value <= b[fromKey]) {
+      if (b[fromKey] === a[fromKey]) return a[toKey];
+      const t = (value - a[fromKey]) / (b[fromKey] - a[fromKey]);
+      return a[toKey] + t * (b[toKey] - a[toKey]);
+    }
+  }
+  return blocks[blocks.length - 1][toKey];
 }
 
 function syncEditorToPreview(ta) {
@@ -535,37 +560,18 @@ function syncEditorToPreview(ta) {
 
   const blocks = getAnnotatedBlocks(preview);
   if (!blocks.length) {
-    // Fallback: proporcjonalny
     const ratio = ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight);
     preview.scrollTop = ratio * Math.max(0, preview.scrollHeight - preview.clientHeight);
     return;
   }
 
   const topLine = getTopLineOfTextarea(ta);
+  const targetTop = interpolateBlocks(blocks, topLine, 'line', 'top');
 
-  // Znajdź dwa bloki otaczające topLine
-  let before = blocks[0];
-  let after  = blocks[blocks.length - 1];
-  for (let i = 0; i < blocks.length - 1; i++) {
-    if (blocks[i].line <= topLine && blocks[i + 1].line >= topLine) {
-      before = blocks[i];
-      after  = blocks[i + 1];
-      break;
-    }
-  }
-
-  let targetScrollTop;
-  if (before.line === after.line || topLine <= before.line) {
-    targetScrollTop = before.top;
-  } else if (topLine >= after.line) {
-    targetScrollTop = after.top;
-  } else {
-    // Interpolacja liniowa między blokami
-    const t = (topLine - before.line) / (after.line - before.line);
-    targetScrollTop = before.top + t * (after.top - before.top);
-  }
-
-  preview.scrollTop = Math.max(0, targetScrollTop);
+  // targetTop to offsetTop elementu w previewPane — to jest scrollTop potrzebny
+  // żeby ten element znalazł się przy górnej krawędzi (przed paddingiem).
+  const paddingTop = parseFloat(window.getComputedStyle(preview).paddingTop) || 0;
+  preview.scrollTop = Math.max(0, targetTop - paddingTop);
 }
 
 function syncPreviewToEditor(ta) {
@@ -579,28 +585,11 @@ function syncPreviewToEditor(ta) {
     return;
   }
 
-  // Który blok jest przy górze podglądu?
-  const scrollTop = preview.scrollTop;
-  let before = blocks[0];
-  let after  = blocks[blocks.length - 1];
-  for (let i = 0; i < blocks.length - 1; i++) {
-    if (blocks[i].top <= scrollTop && blocks[i + 1].top >= scrollTop) {
-      before = blocks[i];
-      after  = blocks[i + 1];
-      break;
-    }
-  }
+  // scrollTop preview → jaki offsetTop elementu jest teraz na górze?
+  const paddingTop = parseFloat(window.getComputedStyle(preview).paddingTop) || 0;
+  const scrolledTo = preview.scrollTop + paddingTop;
 
-  let targetLine;
-  if (before.top === after.top || scrollTop <= before.top) {
-    targetLine = before.line;
-  } else if (scrollTop >= after.top) {
-    targetLine = after.line;
-  } else {
-    const t = (scrollTop - before.top) / (after.top - before.top);
-    targetLine = before.line + t * (after.line - before.line);
-  }
-
+  const targetLine = interpolateBlocks(blocks, scrolledTo, 'top', 'line');
   ta.scrollTop = Math.max(0, getLineTopInTextarea(ta, targetLine));
 }
 
