@@ -708,7 +708,7 @@ body {
 #editor-body[data-mode="preview"] #preview-pane { flex: 1; }
 
 #editor-pane { display: flex; flex-direction: column; overflow: hidden; }
-#preview-pane { overflow-y: auto; padding: 24px 32px; }
+#preview-pane { overflow-y: auto; padding: 24px 32px 40px; }
 #preview-pane-inner { max-width: 700px; }
 
 #editor-divider {
@@ -733,20 +733,10 @@ body {
   outline: none;
   padding: 20px 24px;
   overflow-y: auto;
-  /* Delikatny cień na dole — sygnalizuje koniec pola */
-  box-shadow: inset 0 -6px 10px -6px rgba(0,0,0,.08);
-  margin-bottom: 6px;
-  border-radius: 0 0 var(--radius-sm) 0;
-}
-
-/* Pasek na dole edytora — wizualne zakończenie */
-#editor-pane::after {
-  content: '';
-  display: block;
-  height: 6px;
-  background: var(--border);
-  flex-shrink: 0;
-  border-top: 1px solid var(--border);
+  /* Padding-bottom zostawia widoczny oddech na dole — sygnalizuje koniec pola.
+     Celowo taka sama wartość co w #preview-pane, żeby scroll sync był 1:1. */
+  padding-bottom: 40px;
+  border-bottom: 3px solid var(--border);
 }
 
 /* kbd w przyciskach */
@@ -1236,6 +1226,33 @@ body {
   font-style: normal;
   vertical-align: middle;
 }
+.path-item-drag {
+  color: var(--text-faint);
+  cursor: grab;
+  font-size: 1rem;
+  padding: 0 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--transition);
+  user-select: none;
+  line-height: 1;
+}
+.path-item:hover .path-item-drag { opacity: 1; }
+.path-item-drag:active { cursor: grabbing; }
+
+.path-item.dragging {
+  opacity: .4;
+  background: var(--accent-light);
+  border-color: var(--accent);
+}
+.path-item-placeholder {
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-light);
+  margin-bottom: 4px;
+  opacity: .5;
+}
+
 .path-item-actions {
   display: flex;
   gap: 2px;
@@ -1301,6 +1318,34 @@ body {
 .picker-item:hover { background: var(--bg-hover); }
 .picker-item:last-child { border-bottom: none; }
 
+
+/* ── WIKI-LINK AUTOCOMPLETE ─────────────────────────────── */
+#wiki-ac-dropdown {
+  position: fixed;
+  z-index: 9999;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  min-width: 220px;
+  max-width: 340px;
+  max-height: 260px;
+  overflow-y: auto;
+  display: none;
+}
+.wiki-ac-item {
+  padding: 7px 13px;
+  font-size: .87rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background var(--transition);
+}
+.wiki-ac-item:last-child { border-bottom: none; }
+.wiki-ac-item:hover,
+.wiki-ac-item.selected { background: var(--accent-light); color: var(--accent); }
 /* ---------- UTILITY ---------- */
 .hidden { display: none !important; }
 .text-muted { color: var(--text-muted); }
