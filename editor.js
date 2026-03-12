@@ -1,7 +1,7 @@
 // editor.js — Edytor artykułów z toolbarem i podglądem na żywo
 
 import { getArticleFull, saveArticle, deleteArticle, getAllMeta } from './articles.js';
-import { renderMarkdown } from './markdown.js';
+import { renderMarkdown, renderMarkdownWithLines } from './markdown.js';
 import { getCategoryOptions } from './categories.js';
 import { parseTags, formatTags } from './tags.js';
 import { showToast } from './ui.js';
@@ -100,10 +100,12 @@ export async function renderEditor(articleId, prefillTitle = '', options = {}) {
         <div id="editor-pane">
           <textarea id="editor-textarea" spellcheck="true"
             placeholder="Treść w Markdown…&#10;&#10;## Nagłówek&#10;&#10;Tekst [[link do artykułu]]"></textarea>
+          <div class="editor-bottom-bar"></div>
         </div>
         <div id="editor-divider"></div>
         <div id="preview-pane">
           <div id="preview-pane-inner" class="md-content"></div>
+          <div class="editor-bottom-bar"></div>
         </div>
       </div>
 
@@ -157,26 +159,19 @@ function bindEvents(articleId) {
     updateSyncBtn(syncBtn);
   });
 
-  // Scroll sync — textarea → preview
+  // Scroll sync — textarea → preview (line-based)
   textarea.addEventListener('scroll', () => {
     if (!syncScrollEnabled || syncLock || currentMode !== 'split') return;
-    const preview = document.getElementById('preview-pane');
-    if (!preview) return;
     syncLock = true;
-    const ratio = textarea.scrollTop / Math.max(1, textarea.scrollHeight - textarea.clientHeight);
-    preview.scrollTop = ratio * Math.max(0, preview.scrollHeight - preview.clientHeight);
+    syncEditorToPreview(textarea);
     requestAnimationFrame(() => { syncLock = false; });
   });
 
-  // Scroll sync — preview → textarea
+  // Scroll sync — preview → textarea (line-based)
   document.getElementById('preview-pane').addEventListener('scroll', () => {
     if (!syncScrollEnabled || syncLock || currentMode !== 'split') return;
-    const preview  = document.getElementById('preview-pane');
-    const textarea = document.getElementById('editor-textarea');
-    if (!textarea) return;
     syncLock = true;
-    const ratio = preview.scrollTop / Math.max(1, preview.scrollHeight - preview.clientHeight);
-    textarea.scrollTop = ratio * Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+    syncPreviewToEditor(textarea);
     requestAnimationFrame(() => { syncLock = false; });
   });
 
@@ -239,7 +234,7 @@ function updateLivePreview() {
   const pane = document.getElementById('preview-pane-inner');
   if (!pane || currentMode === 'edit') return;
   const content = document.getElementById('editor-textarea')?.value || '';
-  pane.innerHTML = renderMarkdown(content);
+  pane.innerHTML = renderMarkdownWithLines(content);
 }
 
 // ── SKRÓTY KLAWISZOWE ─────────────────────────────────────
@@ -501,6 +496,112 @@ async function handleDelete() {
 
 function escHtml(str) {
   return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── SCROLL SYNC (line-based) ──────────────────────────────
+//
+// Idea: textarea zna numer linii przy górnej krawędzi widoku.
+// Podgląd ma elementy z data-line. Interpolujemy między nimi.
+
+function getTopLineOfTextarea(ta) {
+  // Której linii tekst jest przy górnej krawędzi scrollu?
+  const lineHeight = parseFloat(window.getComputedStyle(ta).lineHeight) || 20;
+  const paddingTop = parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
+  const line = Math.floor((ta.scrollTop - paddingTop) / lineHeight);
+  return Math.max(0, line);
+}
+
+function getLineTopInTextarea(ta, lineNum) {
+  const lineHeight = parseFloat(window.getComputedStyle(ta).lineHeight) || 20;
+  const paddingTop = parseFloat(window.getComputedStyle(ta).paddingTop) || 0;
+  return paddingTop + lineNum * lineHeight;
+}
+
+function getAnnotatedBlocks(previewPane) {
+  // Zwraca posortowane bloki z data-line z ich offsetTop względem pane
+  const paneTop = previewPane.getBoundingClientRect().top + previewPane.scrollTop;
+  return [...previewPane.querySelectorAll('[data-line]')]
+    .map(el => ({
+      line:   parseInt(el.dataset.line),
+      top:    el.getBoundingClientRect().top - previewPane.getBoundingClientRect().top + previewPane.scrollTop
+    }))
+    .filter(b => !isNaN(b.line))
+    .sort((a, b) => a.line - b.line);
+}
+
+function syncEditorToPreview(ta) {
+  const preview = document.getElementById('preview-pane');
+  if (!preview) return;
+
+  const blocks = getAnnotatedBlocks(preview);
+  if (!blocks.length) {
+    // Fallback: proporcjonalny
+    const ratio = ta.scrollTop / Math.max(1, ta.scrollHeight - ta.clientHeight);
+    preview.scrollTop = ratio * Math.max(0, preview.scrollHeight - preview.clientHeight);
+    return;
+  }
+
+  const topLine = getTopLineOfTextarea(ta);
+
+  // Znajdź dwa bloki otaczające topLine
+  let before = blocks[0];
+  let after  = blocks[blocks.length - 1];
+  for (let i = 0; i < blocks.length - 1; i++) {
+    if (blocks[i].line <= topLine && blocks[i + 1].line >= topLine) {
+      before = blocks[i];
+      after  = blocks[i + 1];
+      break;
+    }
+  }
+
+  let targetScrollTop;
+  if (before.line === after.line || topLine <= before.line) {
+    targetScrollTop = before.top;
+  } else if (topLine >= after.line) {
+    targetScrollTop = after.top;
+  } else {
+    // Interpolacja liniowa między blokami
+    const t = (topLine - before.line) / (after.line - before.line);
+    targetScrollTop = before.top + t * (after.top - before.top);
+  }
+
+  preview.scrollTop = Math.max(0, targetScrollTop);
+}
+
+function syncPreviewToEditor(ta) {
+  const preview = document.getElementById('preview-pane');
+  if (!preview) return;
+
+  const blocks = getAnnotatedBlocks(preview);
+  if (!blocks.length) {
+    const ratio = preview.scrollTop / Math.max(1, preview.scrollHeight - preview.clientHeight);
+    ta.scrollTop = ratio * Math.max(0, ta.scrollHeight - ta.clientHeight);
+    return;
+  }
+
+  // Który blok jest przy górze podglądu?
+  const scrollTop = preview.scrollTop;
+  let before = blocks[0];
+  let after  = blocks[blocks.length - 1];
+  for (let i = 0; i < blocks.length - 1; i++) {
+    if (blocks[i].top <= scrollTop && blocks[i + 1].top >= scrollTop) {
+      before = blocks[i];
+      after  = blocks[i + 1];
+      break;
+    }
+  }
+
+  let targetLine;
+  if (before.top === after.top || scrollTop <= before.top) {
+    targetLine = before.line;
+  } else if (scrollTop >= after.top) {
+    targetLine = after.line;
+  } else {
+    const t = (scrollTop - before.top) / (after.top - before.top);
+    targetLine = before.line + t * (after.line - before.line);
+  }
+
+  ta.scrollTop = Math.max(0, getLineTopInTextarea(ta, targetLine));
 }
 
 // ── WIKI-LINK AUTOCOMPLETE ────────────────────────────────

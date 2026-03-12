@@ -109,6 +109,49 @@ function parseMarkdownTables(text) {
   });
 }
 
+/**
+ * Wersja renderMarkdown z adnotacjami data-line na każdym bloku —
+ * używana przez edytor do precyzyjnego scroll sync.
+ */
+export function renderMarkdownWithLines(text) {
+  if (!text) return '';
+
+  const lines = text.split('\n');
+  // Zbieramy bloki: { startLine, endLine, raw }
+  const blocks = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Blok kodu
+    if (line.startsWith('```')) {
+      const start = i;
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) i++;
+      blocks.push({ startLine: start, endLine: i, raw: lines.slice(start, i + 1).join('\n') });
+      i++;
+      continue;
+    }
+
+    // Pusta linia — pomiń, nie tworzy bloku
+    if (!line.trim()) { i++; continue; }
+
+    // Zbierz akapit (do pustej linii)
+    const start = i;
+    while (i < lines.length && lines[i].trim()) i++;
+    blocks.push({ startLine: start, endLine: i - 1, raw: lines.slice(start, i).join('\n') });
+  }
+
+  // Renderuj każdy blok osobno i opakuj w kontener z data-line
+  return blocks.map(b => {
+    const html = renderMarkdown(b.raw);
+    if (!html.trim()) return '';
+    // Wstaw data-line na pierwszy element HTML bloku
+    return html.replace(/^(<\w+)/, `$1 data-line="${b.startLine}"`);
+  }).join('\n');
+}
+
 /** Wyciąga nagłówki z tekstu Markdown do spisu treści */
 export function extractHeadings(text) {
   if (!text) return [];
