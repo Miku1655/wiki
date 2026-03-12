@@ -63,6 +63,7 @@ function buildHeader(random) {
 }
 
 function buildStatsBar(meta, cats, tags, bookmarks, paths) {
+  const { totalBytes, formattedTotal } = calcStorageSize(meta);
   return '<div class="home-stats-bar">'
     + statPill(meta.length, 'artykułów')
     + '<div class="stat-pill-sep">·</div>'
@@ -73,6 +74,11 @@ function buildStatsBar(meta, cats, tags, bookmarks, paths) {
     + statPill(bookmarks.length, 'zakładek')
     + '<div class="stat-pill-sep">·</div>'
     + statPill(paths.length, 'ścieżek')
+    + '<div class="stat-pill-sep">·</div>'
+    + '<div class="stat-pill" title="Łączny rozmiar treści artykułów w pamięci podręcznej">'
+    + '<span class="stat-num">' + formattedTotal + '</span>'
+    + '<span class="stat-label">w pamięci</span>'
+    + '</div>'
     + '</div>';
 }
 
@@ -120,7 +126,6 @@ function buildPathsCard(paths, meta) {
   return '<div class="home-card" style="grid-column:1/-1">'
     + '<div class="home-card-header">'
     + '<h3>🗺 Ścieżki czytania</h3>'
-    // data-action="open-paths" zamiast id — event delegowany w bindEvents
     + '<button class="btn-small" data-action="open-paths">Wszystkie</button>'
     + '</div>'
     + '<div class="home-paths-row">' + cards + '</div>'
@@ -133,9 +138,13 @@ function buildRecentCard(recent) {
     inner = '<p class="home-empty-hint">Brak artykułów.</p>';
   } else {
     const items = recent.map(function(a) {
+      const size = getArticleCacheSize(a.id);
       return '<li>'
         + '<a class="recent-article" data-id="' + a.id + '">' + escHtml(a.title) + '</a>'
-        + '<span class="recent-date">' + formatRelativeDate(a.updatedAt) + '</span>'
+        + '<span class="recent-date">'
+        + (size ? '<span class="article-size-badge" title="Rozmiar w pamięci podręcznej">' + size + '</span> ' : '')
+        + formatRelativeDate(a.updatedAt)
+        + '</span>'
         + '</li>';
     }).join('');
     inner = '<ul class="recent-list">' + items + '</ul>';
@@ -147,7 +156,6 @@ function buildRecentCard(recent) {
 }
 
 function buildCatsCard(cats, meta) {
-  // Zbuduj mapę liczby artykułów raz (zamiast osobnego .filter per kategorię)
   const countMap = {};
   meta.forEach(function(a) { if (a.category) countMap[a.category] = (countMap[a.category] || 0) + 1; });
 
@@ -184,8 +192,6 @@ function bindEvents() {
     if (r) navigateFn('article/' + r.id);
   });
 
-  // POPRAWKA: stopPropagation zapobiega bubble'owaniu do #main-content,
-  // który w panels.js ma listener zamykający wszystkie panele.
   const btnPaths = document.querySelector('[data-action="open-paths"]');
   btnPaths?.addEventListener('click', function(e) {
     e.stopPropagation();
@@ -215,6 +221,42 @@ function bindEvents() {
       renderHome();
     });
   });
+}
+
+// ── ROZMIAR ARTYKUŁÓW ─────────────────────────────────────
+
+/**
+ * Oblicza łączny rozmiar wszystkich artykułów w localStorage (cache treści).
+ * Klucze treści mają format kp_content_<id>.
+ * Zwraca { totalBytes, formattedTotal }.
+ */
+function calcStorageSize(meta) {
+  let totalBytes = 0;
+  for (const a of meta) {
+    try {
+      const raw = localStorage.getItem('kp_content_' + a.id);
+      if (raw) totalBytes += raw.length * 2; // UTF-16: ~2 bajty na znak
+    } catch {}
+  }
+  return { totalBytes, formattedTotal: formatBytes(totalBytes) };
+}
+
+/**
+ * Zwraca rozmiar pojedynczego artykułu z cache lub pusty string jeśli brak.
+ */
+function getArticleCacheSize(id) {
+  try {
+    const raw = localStorage.getItem('kp_content_' + id);
+    if (!raw) return '';
+    return formatBytes(raw.length * 2);
+  } catch { return ''; }
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  if (bytes < 1024)        return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
 // ── HELPERS ───────────────────────────────────────────────
