@@ -75,12 +75,18 @@ export function convertWikitextToMarkdown(title, wikitext) {
   text = text.replace(/^===\s*(.+?)\s*===$/gm,      '### $1');
   text = text.replace(/^==\s*(.+?)\s*==$/gm,        '## $1');
 
-  // ── 4. Formatowanie tekstu ────────────────────────────
+  // ── 4. Listy ──────────────────────────────────────────
+  // WAŻNE: listy PRZED formatowaniem tekstu (' '),
+  // bo wikitext używa * i # zarówno jako marker listy jak i część składni ''
+  // np. *'''Mewy:''' byłoby błędnie parsowane gdyby '' zostały zamienione pierwsze
+  text = convertWikiLists(text);
+
+  // ── 5. Formatowanie tekstu ────────────────────────────
   text = text.replace(/'{5}(.+?)'{5}/g, '***$1***');
   text = text.replace(/'{3}(.+?)'{3}/g, '**$1**');
   text = text.replace(/'{2}(.+?)'{2}/g, '*$1*');
 
-  // ── 5. Linki wewnętrzne ───────────────────────────────
+  // ── 6. Linki wewnętrzne ───────────────────────────────
   // Kolejność ma znaczenie:
 
   // a) [[Tytuł|alias]] → [[Tytuł|alias]] (zachowaj alias)
@@ -94,16 +100,12 @@ export function convertWikitextToMarkdown(title, wikitext) {
   // c) [[Tytuł]] bez końcówki → [[Tytuł]]
   text = text.replace(/\[\[([^\]|]+)\]\]/g, '[[$1]]');
 
-  // ── 6. Linki zewnętrzne ───────────────────────────────
+  // ── 7. Linki zewnętrzne ───────────────────────────────
   text = text.replace(/\[https?:\/\/[^\s\]]+\s([^\]]+)\]/g, '$1');
   text = text.replace(/\[https?:\/\/[^\s\]]+\]/g, '');
 
-  // ── 7. Tabele ─────────────────────────────────────────
+  // ── 8. Tabele ─────────────────────────────────────────
   text = convertWikiTables(text);
-
-  // ── 8. Listy ──────────────────────────────────────────
-  // NAPRAWIONE: obsługa dowolnej głębokości zagnieżdżenia
-  text = convertWikiLists(text);
 
   // ── 9. Sprzątanie ─────────────────────────────────────
   text = text.replace(/\n{3,}/g, '\n\n');
