@@ -19,6 +19,7 @@ import { initPanelManager, closeAll } from './panels.js';
 import { isBookmarked, toggleBookmark } from './bookmarks.js';
 import { initWikipediaImport } from './wikipedia-modal.js';
 import { initPathsPanel, renderPathView, renderArticlePathWidget } from './panel-paths.js';
+import { initMobile, initSwipeBack } from './mobile.js';
 
 // ── INICJALIZACJA ─────────────────────────────────────────
 
@@ -37,6 +38,8 @@ export async function initApp() {
   initUI(navigate);
   initWikipediaImport(navigate);
   initPathsPanel(navigate);
+  initMobile(navigate);
+  initSwipeBack(navigate);
 
   document.getElementById('logo').addEventListener('click', e => {
     e.preventDefault();
