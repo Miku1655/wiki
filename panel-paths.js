@@ -15,7 +15,7 @@ export function initPathsPanel(navigateCallback) {
   navigateFn = navigateCallback;
 
   document.getElementById('btn-paths-panel').addEventListener('click', (e) => {
-    e.stopPropagation(); // zapobiegaj bubble'owaniu do #main-content → closeAll
+    e.stopPropagation();
     isOpen('paths') ? closePanel('paths') : openPathsPanel();
   });
   document.getElementById('btn-close-paths-panel').addEventListener('click', () => closePanel('paths'));
@@ -102,7 +102,6 @@ export function renderPathView(pathId) {
     <div id="view-path">
       <div id="path-header">
         <div id="path-header-left">
-          <button class="btn-ghost btn-small" id="btn-back-paths">← Ścieżki</button>
           <div>
             <h1 id="path-title-display">${escHtml(path.name)}</h1>
             ${path.description ? `<p class="path-desc-display">${escHtml(path.description)}</p>` : ''}
@@ -149,7 +148,7 @@ function renderPathItems(path) {
   }
 
   const parts = [];
-  let articleIndex = 0; // globalny numer artykułu (nie liczymy nagłówków)
+  let articleIndex = 0;
 
   path.items.forEach((item) => {
     if (item.type === 'group') {
@@ -217,15 +216,7 @@ function renderPathItem(item, idx, pathId) {
   `;
 }
 
-// ── DRAG & DROP (przepisany) ──────────────────────────────
-//
-// Problem ze starym kodem: przy dragover element był jednocześnie
-// usuwany z DOM i wstawiany gdzie indziej, co powodowało utratę
-// stanu drag i błędy w przeglądarce. Nowe podejście:
-// - dragEl NIE jest przenoszony podczas dragover
-// - używamy tylko placeholder jako wizualną wskazówkę
-// - reorder wykonuje się jednorazowo przy dragend na podstawie
-//   pozycji placeholdera w DOM
+// ── DRAG & DROP ───────────────────────────────────────────
 
 function initDragDrop(pathId) {
   const list = document.getElementById('path-items-list');
@@ -233,7 +224,6 @@ function initDragDrop(pathId) {
 
   let dragEl      = null;
   let placeholder = null;
-  let insertBefore = null; // element przed którym wstawimy dragEl
 
   const DRAGGABLE_SEL = '.path-item, .path-group-header';
 
@@ -246,7 +236,6 @@ function initDragDrop(pathId) {
     placeholder.className = 'path-item-placeholder';
     placeholder.style.height = item.offsetHeight + 'px';
 
-    // Ukryj oryginał po starcie (nie usuwaj — drag image się psuje)
     requestAnimationFrame(() => {
       if (dragEl) dragEl.style.opacity = '0.35';
     });
@@ -258,7 +247,6 @@ function initDragDrop(pathId) {
   list.addEventListener('dragend', () => {
     if (!dragEl) return;
 
-    // Wstaw dragEl w miejsce placeholdera
     if (placeholder && placeholder.parentNode) {
       placeholder.parentNode.insertBefore(dragEl, placeholder);
       placeholder.remove();
@@ -267,12 +255,10 @@ function initDragDrop(pathId) {
     dragEl.style.opacity = '';
     dragEl.classList.remove('dragging');
 
-    // Zapisz nową kolejność
     const allItems = [...list.querySelectorAll(DRAGGABLE_SEL)];
     const newOrder = allItems.map(el => el.dataset.itemKey);
     reorderPath(pathId, newOrder);
 
-    // Przenumeruj artykuły (pomijaj nagłówki grup)
     let n = 0;
     list.querySelectorAll(DRAGGABLE_SEL).forEach(el => {
       if (el.classList.contains('path-item')) {
@@ -282,7 +268,7 @@ function initDragDrop(pathId) {
       }
     });
 
-    dragEl = null; placeholder = null; insertBefore = null;
+    dragEl = null; placeholder = null;
   });
 
   list.addEventListener('dragover', e => {
@@ -296,7 +282,6 @@ function initDragDrop(pathId) {
     const rect   = target.getBoundingClientRect();
     const before = e.clientY < rect.top + rect.height / 2;
 
-    // Wstaw placeholder (tylko jeśli zmienił się cel)
     if (before) {
       if (target.previousSibling !== placeholder) target.before(placeholder);
     } else {
@@ -305,7 +290,6 @@ function initDragDrop(pathId) {
   });
 
   list.addEventListener('dragleave', e => {
-    // Usuń placeholder tylko gdy kursor opuszcza cały list
     if (!list.contains(e.relatedTarget)) {
       placeholder?.remove();
     }
@@ -313,7 +297,6 @@ function initDragDrop(pathId) {
 
   list.addEventListener('drop', e => {
     e.preventDefault();
-    // dragend obsługuje faktyczne przeniesienie
   });
 }
 
@@ -336,10 +319,6 @@ function reorderPath(pathId, newOrder) {
 
 function bindPathViewEvents(pathId) {
   const main = document.getElementById('main-content');
-
-  main.querySelector('#btn-back-paths').addEventListener('click', () => {
-    openPathsPanel();
-  });
 
   main.querySelector('#btn-edit-path').addEventListener('click', () => showEditModal(pathId));
   main.querySelector('#btn-import-list').addEventListener('click', () => showImportModal(pathId));
@@ -378,13 +357,12 @@ function bindPathViewEvents(pathId) {
     });
   });
 
-  // Usuń z ścieżki (artykuły i nagłówki grup)
+  // Usuń z ścieżki
   main.querySelectorAll('.btn-remove-item').forEach(btn => {
     btn.addEventListener('click', () => {
       const key = btn.dataset.itemKey || btn.dataset.id || btn.dataset.title;
       removeItemFromPathByKey(pathId, key);
       refreshProgressBar(pathId);
-      // Przenumeruj
       let n = 0;
       document.querySelectorAll('.path-item').forEach(el => {
         n++;
@@ -431,7 +409,6 @@ function refreshProgressBar(pathId) {
 
 // ── STORAGE HELPERS ───────────────────────────────────────
 
-/** Usuwa element ze ścieżki na podstawie złożonego klucza (articleId / group id / tytuł) */
 function removeItemFromPathByKey(pathId, key) {
   const paths = JSON.parse(localStorage.getItem('kp_reading_paths') || '[]');
   const path  = paths.find(p => p.id === pathId);
@@ -499,7 +476,6 @@ function showAddArticleModal(pathId) {
   if (!path) return;
   const existing = new Set(path.items.filter(i => i.articleId).map(i => i.articleId));
 
-  // Pokaż picker z opcją wpisania własnego tytułu
   showArticlePickerModal(
     'Dodaj artykuł do ścieżki',
     getAllMeta().filter(a => !existing.has(a.id)),
@@ -566,10 +542,6 @@ function showImportListModal(pathId) {
   setTimeout(() => ta.focus(), 50);
 }
 
-/**
- * Picker artykułu z możliwością wpisania dowolnego tytułu
- * (dla artykułów jeszcze nieistniejących).
- */
 function showArticlePickerModal(title, articles, onSelect) {
   const overlay = document.createElement('div');
   overlay.className = 'modal';
@@ -595,8 +567,8 @@ function showArticlePickerModal(title, articles, onSelect) {
   `;
   document.body.appendChild(overlay);
 
-  const input    = overlay.querySelector('#picker-search');
-  const hint     = overlay.querySelector('#picker-custom-hint');
+  const input     = overlay.querySelector('#picker-search');
+  const hint      = overlay.querySelector('#picker-custom-hint');
   const btnCustom = overlay.querySelector('#btn-picker-add-custom');
 
   const render = (q = '') => {
@@ -605,7 +577,6 @@ function showArticlePickerModal(title, articles, onSelect) {
       : articles;
     const list = overlay.querySelector('#picker-list');
 
-    // Pokaż opcję "dodaj jako placeholder" gdy brak dokładnego dopasowania
     const exactMatch = articles.some(a => a.title.toLowerCase() === q.toLowerCase());
     const showCustom  = q.length >= 2 && !exactMatch;
     hint.style.display    = showCustom ? '' : 'none';
@@ -631,10 +602,8 @@ function showArticlePickerModal(title, articles, onSelect) {
     if (e.key === 'Enter') {
       const q = input.value.trim();
       if (q.length >= 2) {
-        // Jeśli jest dokładne dopasowanie, wybierz je
         const exact = articles.find(a => a.title.toLowerCase() === q.toLowerCase());
         if (exact) { onSelect({ id: exact.id, title: exact.title }); overlay.remove(); return; }
-        // Inaczej dodaj placeholder
         onSelect({ id: null, title: q });
         overlay.remove();
       }

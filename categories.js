@@ -12,6 +12,13 @@ export async function loadCategoriesData() {
   if (cached) categories = cached;
   try {
     const fresh = await fetchCategories();
+    // Zachowaj kolejność z localStorage jeśli istnieje
+    const cached2 = loadCategories();
+    if (cached2 && cached2.length) {
+      const orderMap = {};
+      cached2.forEach(c => { if (c.order !== undefined) orderMap[c.id] = c.order; });
+      fresh.forEach(c => { if (orderMap[c.id] !== undefined) c.order = orderMap[c.id]; });
+    }
     categories = fresh;
     saveCategories(fresh);
   } catch(e) {
@@ -30,7 +37,7 @@ export function getCategoryName(id) {
   return getCategoryById(id)?.name || id || '—';
 }
 
-/** Buduje drzewo z płaskiej listy */
+/** Buduje drzewo z płaskiej listy, uwzględniając kolejność */
 export function buildCategoryTree(cats = categories) {
   const map = {};
   cats.forEach(c => { map[c.id] = { ...c, children: [] }; });
@@ -42,6 +49,12 @@ export function buildCategoryTree(cats = categories) {
       roots.push(map[c.id]);
     }
   });
+  // Sortuj po polu order
+  const sortByOrder = nodes => {
+    nodes.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+    nodes.forEach(n => { if (n.children?.length) sortByOrder(n.children); });
+  };
+  sortByOrder(roots);
   return roots;
 }
 
@@ -58,14 +71,6 @@ export function getCategoryPath(id) {
 
 // ── ZAPIS / USUWANIE ──────────────────────────────────────
 
-/**
- * Jedyna funkcja zapisu kategorii — przez storage.js do Firebase,
- * następnie aktualizuje in-memory cache i localStorage.
- *
- * Wcześniej istniały trzy duplikaty tej samej logiki:
- *   saveCategory / saveCategoryData / saveCategoryToStore
- * — wszystkie zostały zastąpione tą jedną funkcją.
- */
 export async function saveCategoryToStore(cat) {
   const id = await storageSave(cat);
   const updated = { ...cat, id };
@@ -79,6 +84,15 @@ export async function saveCategoryToStore(cat) {
 export async function deleteCategoryFromStore(id) {
   await storageDelete(id);
   categories = categories.filter(c => c.id !== id);
+  saveCategories(categories);
+}
+
+/** Zapisuje nową kolejność kategorii (tylko w localStorage) */
+export function saveCategoryOrder(orderedIds, parentId = null) {
+  orderedIds.forEach((id, idx) => {
+    const cat = categories.find(c => c.id === id);
+    if (cat) cat.order = idx;
+  });
   saveCategories(categories);
 }
 

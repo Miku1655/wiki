@@ -1,12 +1,16 @@
-// sidebar-left.js — Lewy panel: drzewo kategorii
+// sidebar-left.js — Lewy panel: drzewo kategorii z drag & drop
 
-import { buildCategoryTree, getCategoryOptions, saveCategoryToStore, deleteCategoryFromStore, loadCategoriesData, getAllCategories } from './categories.js';
+import { buildCategoryTree, getCategoryOptions, saveCategoryToStore, deleteCategoryFromStore, loadCategoriesData, getAllCategories, saveCategoryOrder } from './categories.js';
 import { filterByCategory } from './search.js';
 import { getAllMeta, saveArticle, getArticleFull } from './articles.js';
 import { showToast } from './ui.js';
 
 let navigateFn = null;
 let openNodes = new Set();
+
+// Drag & drop state
+let _dragCatId   = null;
+let _dragPlaceholder = null;
 
 export function initSidebarLeft(navigateCallback) {
   navigateFn = navigateCallback;
@@ -74,10 +78,20 @@ export function renderCategoryTree() {
 function renderNode(node, depth) {
   const el = document.createElement('div');
   el.className = 'tree-node';
+  el.dataset.catId = node.id;
 
   const row = document.createElement('div');
   row.className = 'tree-node-row';
   row.style.paddingLeft = `${14 + depth * 14}px`;
+  row.dataset.catId = node.id;
+  row.dataset.parentId = node.parentId || '';
+  row.dataset.depth = depth;
+
+  // Drag handle
+  const dragHandle = document.createElement('span');
+  dragHandle.className = 'tree-drag-handle';
+  dragHandle.textContent = '⠿';
+  dragHandle.title = 'Przeciągnij aby zmienić kolejność';
 
   const toggle = document.createElement('span');
   toggle.className = 'tree-toggle' + (openNodes.has(node.id) ? ' open' : '');
@@ -96,7 +110,8 @@ function renderNode(node, depth) {
     openCategoryModal(node);
   });
 
-  row.addEventListener('click', () => {
+  row.addEventListener('click', e => {
+    if (e.target === dragHandle) return;
     if (node.children?.length) {
       if (openNodes.has(node.id)) openNodes.delete(node.id);
       else openNodes.add(node.id);
@@ -105,9 +120,15 @@ function renderNode(node, depth) {
     if (navigateFn) navigateFn('category/' + node.id);
   });
 
+  row.appendChild(dragHandle);
   row.appendChild(toggle);
   row.appendChild(icon);
   row.appendChild(label);
+
+  // Drag & drop
+  row.draggable = true;
+  _bindCatDrag(row, node, depth);
+
   el.appendChild(row);
 
   if (node.children?.length && openNodes.has(node.id)) {
@@ -118,6 +139,70 @@ function renderNode(node, depth) {
   }
 
   return el;
+}
+
+// ── DRAG & DROP KATEGORII ─────────────────────────────────
+
+function _bindCatDrag(row, node, depth) {
+  row.addEventListener('dragstart', e => {
+    _dragCatId = node.id;
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', node.id);
+
+    _dragPlaceholder = document.createElement('div');
+    _dragPlaceholder.className = 'tree-drag-placeholder';
+    _dragPlaceholder.style.height = row.offsetHeight + 'px';
+    _dragPlaceholder.style.paddingLeft = row.style.paddingLeft;
+  });
+
+  row.addEventListener('dragend', () => {
+    row.classList.remove('dragging');
+    _dragPlaceholder?.remove();
+    _dragCatId = null;
+    _dragPlaceholder = null;
+  });
+
+  row.addEventListener('dragover', e => {
+    e.preventDefault();
+    if (!_dragCatId || _dragCatId === node.id) return;
+    e.dataTransfer.dropEffect = 'move';
+
+    const rect = row.getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    if (before) {
+      row.parentNode.insertBefore(_dragPlaceholder, row);
+    } else {
+      row.parentNode.insertBefore(_dragPlaceholder, row.nextSibling);
+    }
+  });
+
+  row.addEventListener('drop', e => {
+    e.preventDefault();
+    if (!_dragCatId || _dragCatId === node.id) return;
+
+    const allCats = getAllCategories();
+    const draggedCat = allCats.find(c => c.id === _dragCatId);
+    if (!draggedCat) return;
+
+    // Nowe rodzeństwo — kategorie na tym samym poziomie i tym samym parentId
+    const parentId = node.parentId || null;
+    const siblings = allCats
+      .filter(c => (c.parentId || null) === parentId && c.id !== _dragCatId)
+      .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+
+    const targetIdx = siblings.findIndex(c => c.id === node.id);
+    const rect = row.getBoundingClientRect();
+    const before = e.clientY < rect.top + row.offsetHeight / 2;
+    const insertAt = before ? targetIdx : targetIdx + 1;
+
+    siblings.splice(insertAt, 0, draggedCat);
+    const newOrder = siblings.map(c => c.id);
+    saveCategoryOrder(newOrder, parentId);
+
+    renderCategoryTree();
+    showToast('Kolejność kategorii zapisana');
+  });
 }
 
 export function highlightActiveCategory(categoryId) {
@@ -153,8 +238,7 @@ function openCategoryModal(existingCategory) {
 
   modal.dataset.editingId = existingCategory?.id || '';
 
-  // ── Przycisk usuwania ─────────────────────────────────
-  // Usuń stary przycisk jeśli istnieje (przy ponownym otwarciu modalu)
+  // Usuń stary przycisk usuwania
   modal.querySelector('#btn-category-delete')?.remove();
 
   if (existingCategory?.id) {
@@ -162,7 +246,7 @@ function openCategoryModal(existingCategory) {
     const deleteBtn = document.createElement('button');
     deleteBtn.id = 'btn-category-delete';
     deleteBtn.className = 'btn-danger';
-    deleteBtn.style.marginRight = 'auto'; // wyrównaj do lewej
+    deleteBtn.style.marginRight = 'auto';
     deleteBtn.textContent = 'Usuń';
     deleteBtn.addEventListener('click', () => deleteCategoryFromModal(existingCategory));
     actionsEl.prepend(deleteBtn);
@@ -207,16 +291,10 @@ async function deleteCategoryFromModal(category) {
   const allCats     = getAllCategories();
   const allArticles = getAllMeta();
 
-  // Zbierz wszystkie id tej kategorii i jej potomków
   const subtreeIds = getSubtreeIds(category.id, allCats);
-
-  // Policz artykuły w tej kategorii i podkategoriach
   const affectedArticles = allArticles.filter(a => subtreeIds.includes(a.category));
-
-  // Policz podkategorie (bez samej kategorii)
   const childCats = subtreeIds.filter(id => id !== category.id);
 
-  // Zbuduj czytelny komunikat
   const lines = [`Usunąć kategorię „${category.name}"?`];
   if (childCats.length) {
     lines.push(`\nZostanie też usuniętych ${childCats.length} podkategor${childCats.length === 1 ? 'ia' : 'ii'}.`);
@@ -229,16 +307,14 @@ async function deleteCategoryFromModal(category) {
 
   closeCategoryModal();
 
-  const deleteBtn = document.getElementById('btn-category-save');
-  if (deleteBtn) { deleteBtn.disabled = true; }
+  const saveBtn = document.getElementById('btn-category-save');
+  if (saveBtn) { saveBtn.disabled = true; }
 
   try {
-    // 1. Usuń wszystkie kategorie z poddrzewa (od liści do korzenia)
     for (const id of [...subtreeIds].reverse()) {
       await deleteCategoryFromStore(id);
     }
 
-    // 2. Wyczyść kategorię z artykułów których dotyczyła
     if (affectedArticles.length) {
       await Promise.all(affectedArticles.map(async meta => {
         try {
@@ -260,13 +336,10 @@ async function deleteCategoryFromModal(category) {
     console.error(e);
     showToast('Błąd usuwania kategorii: ' + e.message);
   } finally {
-    if (deleteBtn) { deleteBtn.disabled = false; }
+    if (saveBtn) { saveBtn.disabled = false; }
   }
 }
 
-/**
- * Zwraca id kategorii i wszystkich jej potomków (BFS).
- */
 function getSubtreeIds(rootId, allCats) {
   const ids = [];
   const queue = [rootId];

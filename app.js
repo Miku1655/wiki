@@ -136,6 +136,10 @@ export async function navigate(route, options = {}) {
       import('./sidebar-right.js').then(m => m.clearSidebarRight());
       break;
 
+    case 'tags-manage':
+      renderTagsManageView();
+      break;
+
     default:
       renderHome();
   }
@@ -234,7 +238,7 @@ function getArticleCacheSize(id) {
   try {
     const raw = localStorage.getItem('kp_content_' + id);
     if (!raw) return '';
-    return formatBytes(raw.length * 2); // UTF-16: ~2 bajty na znak
+    return formatBytes(raw.length * 2);
   } catch { return ''; }
 }
  
@@ -244,27 +248,55 @@ function formatBytes(bytes) {
   return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
 }
 
+// Dostępne opcje sortowania dla listy artykułów
+const SORT_OPTIONS = [
+  { value: 'title-asc',   label: 'Tytuł A–Z' },
+  { value: 'title-desc',  label: 'Tytuł Z–A' },
+  { value: 'date-desc',   label: 'Najnowsze' },
+  { value: 'date-asc',    label: 'Najstarsze' },
+];
+
+function sortArticles(articles, sortKey) {
+  const arr = [...articles];
+  switch (sortKey) {
+    case 'title-asc':
+      return arr.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'pl'));
+    case 'title-desc':
+      return arr.sort((a, b) => (b.title || '').localeCompare(a.title || '', 'pl'));
+    case 'date-desc':
+      return arr.sort((a, b) => {
+        const da = a.updatedAt ? new Date(a.updatedAt) : new Date(0);
+        const db = b.updatedAt ? new Date(b.updatedAt) : new Date(0);
+        return db - da;
+      });
+    case 'date-asc':
+      return arr.sort((a, b) => {
+        const da = a.updatedAt ? new Date(a.updatedAt) : new Date(0);
+        const db = b.updatedAt ? new Date(b.updatedAt) : new Date(0);
+        return da - db;
+      });
+    default:
+      return arr;
+  }
+}
+
 function renderAllArticlesView() {
   const main = document.getElementById('main-content');
   clearSidebarRight();
- 
-  const articles = [...getAllMeta()].sort((a, b) =>
-    (a.title || '').localeCompare(b.title || '', 'pl')
-  );
- 
-  // Oblicz łączny rozmiar wszystkich artykułów w cache
+
+  const savedSort = localStorage.getItem('kp_sort_all') || 'title-asc';
+  const allArticles = getAllMeta();
+  const articles = sortArticles(allArticles, savedSort);
+
   let totalBytes = 0;
-  for (const a of articles) {
+  for (const a of allArticles) {
     try {
       const raw = localStorage.getItem('kp_content_' + a.id);
       if (raw) totalBytes += raw.length * 2;
     } catch {}
   }
   const totalSize  = totalBytes ? ' · ' + formatBytes(totalBytes) + ' łącznie' : '';
-  const cachedCount = articles.filter(a => {
-    try { return !!localStorage.getItem('kp_content_' + a.id); } catch { return false; }
-  }).length;
- 
+
   main.innerHTML = `
     <div id="view-home" style="padding:36px 48px;max-width:860px">
       <h1 style="font-family:var(--font-heading);font-size:1.7rem;margin-bottom:20px">📄 Wszystkie artykuły</h1>
@@ -273,8 +305,14 @@ function renderAllArticlesView() {
           style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
                  background:var(--bg-panel);color:var(--text);font-family:var(--font-ui);
                  font-size:.88rem;outline:none;min-width:200px"/>
+        <select id="all-articles-sort"
+          style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);
+                 background:var(--bg-panel);color:var(--text);font-family:var(--font-ui);
+                 font-size:.85rem;outline:none;cursor:pointer">
+          ${SORT_OPTIONS.map(o => `<option value="${o.value}" ${o.value === savedSort ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>
         <span id="all-articles-count" style="font-size:.8rem;color:var(--text-faint)">
-          ${articles.length} artykułów${totalSize}
+          ${allArticles.length} artykułów${totalSize}
         </span>
       </div>
       ${articles.length ? `
@@ -295,11 +333,17 @@ function renderAllArticlesView() {
       ` : `<div class="empty-state"><div class="empty-icon">📄</div><p>Brak artykułów.</p></div>`}
     </div>
   `;
- 
+
   document.querySelectorAll('.all-article-link').forEach(el =>
     el.addEventListener('click', () => navigate('article/' + el.dataset.id))
   );
- 
+
+  // Sortowanie
+  document.getElementById('all-articles-sort').addEventListener('change', e => {
+    localStorage.setItem('kp_sort_all', e.target.value);
+    renderAllArticlesView();
+  });
+
   // Live filter
   const searchInput = document.getElementById('all-articles-search');
   const countEl     = document.getElementById('all-articles-count');
@@ -321,8 +365,8 @@ function renderAllArticlesView() {
     });
     const sizeInfo = visibleBytes ? ' · ' + formatBytes(visibleBytes) : '';
     countEl.textContent = q
-      ? `${visible} z ${articles.length}${sizeInfo}`
-      : `${articles.length} artykułów${totalSize}`;
+      ? `${visible} z ${allArticles.length}${sizeInfo}`
+      : `${allArticles.length} artykułów${totalSize}`;
   });
 }
 
@@ -333,12 +377,15 @@ function renderCategoryView(categoryId) {
   clearSidebarRight();
 
   const isUncategorized = categoryId === '__uncategorized__';
+  const savedSort = localStorage.getItem('kp_sort_cat_' + categoryId) || 'title-asc';
 
   import('./categories.js').then(({ getCategoryName, getAllCategories }) => {
-    const allArticles = getAllMeta();
-    const articles = isUncategorized
-      ? allArticles.filter(a => !a.category)
-      : allArticles.filter(a => a.category === categoryId);
+    const allArticlesRaw = getAllMeta();
+    const articlesRaw = isUncategorized
+      ? allArticlesRaw.filter(a => !a.category)
+      : allArticlesRaw.filter(a => a.category === categoryId);
+
+    const articles = sortArticles(articlesRaw, savedSort);
 
     const subcats = isUncategorized
       ? []
@@ -364,7 +411,6 @@ function renderCategoryView(categoryId) {
       </div>`;
     };
 
-    // Bulk-edit toolbar (ukryty dopóki nie zaznaczono)
     const bulkToolbarHtml = `
       <div id="bulk-toolbar" class="bulk-toolbar hidden">
         <span id="bulk-count">0 zaznaczonych</span>
@@ -394,7 +440,9 @@ function renderCategoryView(categoryId) {
         ${buildBreadcrumb(categoryId)}
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
           <h1 style="font-family:var(--font-heading);font-size:1.7rem">${icon} ${escHtml(catName)}</h1>
-          ${articles.length >= 2 ? `<button class="btn-small" id="btn-toggle-bulk">☑ Zaznacz wiele</button>` : ''}
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            ${articles.length >= 2 ? `<button class="btn-small" id="btn-toggle-bulk">☑ Zaznacz wiele</button>` : ''}
+          </div>
         </div>
 
         ${bulkToolbarHtml}
@@ -407,7 +455,7 @@ function renderCategoryView(categoryId) {
               <div class="subcat-card cat-nav" data-id="${c.id}">
                 <span class="subcat-icon">📁</span>
                 <span class="subcat-name">${escHtml(c.name)}</span>
-                <span class="subcat-count">${allArticles.filter(a => a.category === c.id).length} art.</span>
+                <span class="subcat-count">${allArticlesRaw.filter(a => a.category === c.id).length} art.</span>
               </div>
             `).join('')}
           </div>
@@ -415,10 +463,20 @@ function renderCategoryView(categoryId) {
         ` : ''}
 
         ${articles.length ? `
-          <h3 style="font-family:var(--font-heading);font-size:1rem;font-weight:400;font-style:italic;
-                     color:var(--text-muted);margin-bottom:10px">
-            Artykuły (${articles.length})
-          </h3>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+            <h3 style="font-family:var(--font-heading);font-size:1rem;font-weight:400;font-style:italic;
+                       color:var(--text-muted)">
+              Artykuły (${articles.length})
+            </h3>
+            <div style="display:flex;align-items:center;gap:8px">
+              <select id="cat-articles-sort"
+                style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);
+                       background:var(--bg-panel);color:var(--text);font-family:var(--font-ui);
+                       font-size:.8rem;outline:none;cursor:pointer">
+                ${SORT_OPTIONS.map(o => `<option value="${o.value}" ${o.value === savedSort ? 'selected' : ''}>${o.label}</option>`).join('')}
+              </select>
+            </div>
+          </div>
           <ul class="recent-list" id="cat-articles-list">
             ${articles.map(a => `
               <li data-article-id="${a.id}">
@@ -444,6 +502,12 @@ function renderCategoryView(categoryId) {
         o.value = opt.id; o.textContent = opt.name;
         sel.appendChild(o);
       });
+    });
+
+    // Sortowanie artykułów w kategorii
+    document.getElementById('cat-articles-sort')?.addEventListener('change', e => {
+      localStorage.setItem('kp_sort_cat_' + categoryId, e.target.value);
+      renderCategoryView(categoryId);
     });
 
     // Klik w artykuł
@@ -524,15 +588,30 @@ function renderCategoryView(categoryId) {
 // ── WIDOK TAGU ────────────────────────────────────────────
 
 function renderTagView(tag) {
-  const articles = getAllMeta().filter(a => (a.tags||[]).includes(tag));
+  const savedSort = localStorage.getItem('kp_sort_tag_' + tag) || 'title-asc';
+  const rawArticles = getAllMeta().filter(a => (a.tags||[]).includes(tag));
+  const articles = sortArticles(rawArticles, savedSort);
   const main = document.getElementById('main-content');
   clearSidebarRight();
 
   main.innerHTML = `
     <div id="view-home" style="padding:36px 48px">
-      <h1 style="font-family:var(--font-heading);font-size:1.7rem;margin-bottom:20px">#${escHtml(tag)}</h1>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap">
+        <h1 style="font-family:var(--font-heading);font-size:1.7rem">#${escHtml(tag)}</h1>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${articles.length >= 2 ? `
+            <select id="tag-articles-sort"
+              style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);
+                     background:var(--bg-panel);color:var(--text);font-family:var(--font-ui);
+                     font-size:.8rem;outline:none;cursor:pointer">
+              ${SORT_OPTIONS.map(o => `<option value="${o.value}" ${o.value === savedSort ? 'selected' : ''}>${o.label}</option>`).join('')}
+            </select>
+          ` : ''}
+          <button class="btn-small" id="btn-manage-tag" title="Zarządzaj tagiem">⚙ Zarządzaj</button>
+        </div>
+      </div>
       ${articles.length ? `
-        <ul class="recent-list">
+        <ul class="recent-list" id="tag-articles-list">
           ${articles.map(a => `
             <li>
               <a class="tag-article" data-id="${a.id}">${escHtml(a.title)}</a>
@@ -542,9 +621,171 @@ function renderTagView(tag) {
       ` : `<div class="empty-state"><div class="empty-icon">🏷️</div><p>Brak artykułów z tym tagiem.</p></div>`}
     </div>
   `;
+
   document.querySelectorAll('.tag-article').forEach(el => {
     el.addEventListener('click', () => navigate('article/' + el.dataset.id));
   });
+
+  document.getElementById('tag-articles-sort')?.addEventListener('change', e => {
+    localStorage.setItem('kp_sort_tag_' + tag, e.target.value);
+    renderTagView(tag);
+  });
+
+  document.getElementById('btn-manage-tag')?.addEventListener('click', () => {
+    showTagManageModal(tag);
+  });
+}
+
+// ── ZARZĄDZANIE TAGAMI ─────────────────────────────────────
+
+function renderTagsManageView() {
+  const main = document.getElementById('main-content');
+  clearSidebarRight();
+
+  import('./tags.js').then(({ getAllTags }) => {
+    const tags = getAllTags();
+    const allArticles = getAllMeta();
+
+    main.innerHTML = `
+      <div id="view-home" style="padding:36px 48px;max-width:860px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+          <h1 style="font-family:var(--font-heading);font-size:1.7rem">🏷 Zarządzanie tagami</h1>
+        </div>
+        <div style="margin-bottom:16px">
+          <input type="text" id="tags-manage-search" placeholder="Filtruj tagi…"
+            style="padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
+                   background:var(--bg-panel);color:var(--text);font-family:var(--font-ui);
+                   font-size:.88rem;outline:none;min-width:200px"/>
+        </div>
+        ${tags.length ? `
+          <table class="tags-manage-table" style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border);font-size:.8rem;color:var(--text-faint);text-transform:uppercase;letter-spacing:.06em">
+                <th style="text-align:left;padding:6px 10px;font-weight:500">Tag</th>
+                <th style="text-align:center;padding:6px 10px;font-weight:500">Artykuły</th>
+                <th style="text-align:right;padding:6px 10px;font-weight:500">Akcje</th>
+              </tr>
+            </thead>
+            <tbody id="tags-manage-list">
+              ${tags.map(t => `
+                <tr class="tags-manage-row" data-tag="${escHtml(t.name)}"
+                  style="border-bottom:1px solid var(--border-light);transition:background var(--transition)">
+                  <td style="padding:8px 10px">
+                    <span class="tag-chip" data-nav-tag="${escHtml(t.name)}" style="cursor:pointer">#${escHtml(t.name)}</span>
+                  </td>
+                  <td style="padding:8px 10px;text-align:center;font-size:.85rem;color:var(--text-muted)">${t.count}</td>
+                  <td style="padding:8px 10px;text-align:right">
+                    <button class="btn-small btn-rename-tag" data-tag="${escHtml(t.name)}" style="margin-right:4px">✎ Zmień nazwę</button>
+                    <button class="btn-small btn-delete-tag" data-tag="${escHtml(t.name)}"
+                      style="border-color:var(--danger,#e55);color:var(--danger,#c0392b)">✕ Usuń</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : `<div class="empty-state"><div class="empty-icon">🏷️</div><p>Brak tagów.</p></div>`}
+      </div>
+    `;
+
+    // Nawigacja do widoku tagu
+    document.querySelectorAll('.tag-chip[data-nav-tag]').forEach(el => {
+      el.addEventListener('click', () => navigate('tag/' + el.dataset.navTag));
+    });
+
+    // Filtrowanie
+    document.getElementById('tags-manage-search')?.addEventListener('input', e => {
+      const q = e.target.value.trim().toLowerCase();
+      document.querySelectorAll('.tags-manage-row').forEach(row => {
+        row.style.display = !q || row.dataset.tag.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+
+    // Zmień nazwę tagu
+    document.querySelectorAll('.btn-rename-tag').forEach(btn => {
+      btn.addEventListener('click', () => showTagRenameModal(btn.dataset.tag, () => renderTagsManageView()));
+    });
+
+    // Usuń tag
+    document.querySelectorAll('.btn-delete-tag').forEach(btn => {
+      btn.addEventListener('click', () => showTagDeleteModal(btn.dataset.tag, () => renderTagsManageView()));
+    });
+  });
+}
+
+/** Modal zarządzania tagiem (z poziomu widoku tagu) */
+function showTagManageModal(tag) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:360px">
+      <h2>🏷 Tag: #${escHtml(tag)}</h2>
+      <div class="modal-actions" style="flex-direction:column;gap:8px;align-items:stretch">
+        <button class="btn-primary" id="btn-tmod-rename">✎ Zmień nazwę tagu</button>
+        <button class="btn-ghost"   id="btn-tmod-manage">📋 Wszystkie tagi</button>
+        <button class="btn-danger"  id="btn-tmod-delete">✕ Usuń tag ze wszystkich artykułów</button>
+        <button class="btn-ghost"   id="btn-tmod-close">Anuluj</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.getElementById('btn-tmod-close').addEventListener('click', () => overlay.remove());
+  document.getElementById('btn-tmod-manage').addEventListener('click', () => {
+    overlay.remove();
+    navigate('tags-manage');
+  });
+  document.getElementById('btn-tmod-rename').addEventListener('click', () => {
+    overlay.remove();
+    showTagRenameModal(tag, () => renderTagView(tag));
+  });
+  document.getElementById('btn-tmod-delete').addEventListener('click', () => {
+    overlay.remove();
+    showTagDeleteModal(tag, () => navigate('home'));
+  });
+}
+
+/** Zmiana nazwy tagu we wszystkich artykułach */
+async function showTagRenameModal(tag, onDone) {
+  const newName = prompt(`Nowa nazwa tagu (obecna: "${tag}"):`, tag);
+  if (!newName?.trim() || newName.trim() === tag) return;
+  const normalized = newName.trim().toLowerCase().replace(/\s+/g, '-');
+
+  const articles = getAllMeta().filter(a => (a.tags||[]).includes(tag));
+  if (!articles.length) { showToast('Brak artykułów z tym tagiem'); return; }
+
+  if (!confirm(`Zmienić tag "${tag}" → "${normalized}" w ${articles.length} artykułach?`)) return;
+
+  try {
+    await Promise.all(articles.map(async meta => {
+      const full = await getArticleFull(meta.id);
+      if (!full) return;
+      const tags = (full.tags || []).map(t => t === tag ? normalized : t);
+      await saveArticle({ ...full, tags });
+    }));
+    showToast(`Tag zmieniony: "${tag}" → "${normalized}" w ${articles.length} artykułach`);
+    onDone?.();
+  } catch(e) {
+    showToast('Błąd: ' + e.message);
+  }
+}
+
+/** Usunięcie tagu ze wszystkich artykułów */
+async function showTagDeleteModal(tag, onDone) {
+  const articles = getAllMeta().filter(a => (a.tags||[]).includes(tag));
+  if (!confirm(`Usunąć tag "${tag}" z ${articles.length} artykułów?`)) return;
+
+  try {
+    await Promise.all(articles.map(async meta => {
+      const full = await getArticleFull(meta.id);
+      if (!full) return;
+      const tags = (full.tags || []).filter(t => t !== tag);
+      await saveArticle({ ...full, tags });
+    }));
+    showToast(`Usunięto tag "${tag}" z ${articles.length} artykułów`);
+    onDone?.();
+  } catch(e) {
+    showToast('Błąd: ' + e.message);
+  }
 }
 
 // ── HELPERS ───────────────────────────────────────────────
