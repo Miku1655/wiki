@@ -18,7 +18,7 @@ import { navigateTab, openNewTab, closeTab, switchTab, getTabs, getActiveTabId, 
 import { initPanelManager, closeAll } from './panels.js';
 import { isBookmarked, toggleBookmark } from './bookmarks.js';
 import { initWikipediaImport } from './wikipedia-modal.js';
-import { initPathsPanel, renderPathView, renderArticlePathWidget } from './panel-paths.js';
+import { initPathsPanel, renderPathView, renderArticlePathWidget, tryResolvePlaceholders } from './panel-paths.js';
 import { initMobile, initSwipeBack } from './mobile.js';
 
 // ── INICJALIZACJA ─────────────────────────────────────────
@@ -63,6 +63,8 @@ async function loadData() {
       loadCategoriesData()
     ]);
     renderCategoryTree();
+    // Napraw placeholdery w ścieżkach gdy znamy już aktualne artykuły
+    tryResolvePlaceholders().catch(() => {});
   } catch(e) {
     console.error('Błąd ładowania danych:', e);
     showToast('Błąd połączenia z bazą danych');
