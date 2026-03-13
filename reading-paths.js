@@ -5,6 +5,10 @@ import { collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimest
 const CACHE_KEY = 'kp_paths_v2';
 const LEGACY_KEY = 'kp_reading_paths';
 
+let _paths   = [];
+let _unsubscribe = null;
+let _listeners = [];
+
 function db() {
   return window.__db;
 }
@@ -26,7 +30,6 @@ function loadCache() {
   } catch { return null; }
 }
 
-/** Jednorazowa migracja ze starego localStorage */
 function migrateLegacy() {
   try {
     const raw = localStorage.getItem(LEGACY_KEY);
@@ -41,14 +44,12 @@ function migrateLegacy() {
 // ── ŁADOWANIE I SYNC ───────────────────────────────────────
 
 export async function loadPathsData() {
-  // 1. Wczytaj cache natychmiast
   const cached = loadCache();
   if (cached) {
     _paths = cached;
     _notify();
   }
 
-  // 2. Zasubskrybuj Firestore (real-time)
   if (_unsubscribe) _unsubscribe();
 
   return new Promise((resolve) => {
@@ -56,7 +57,6 @@ export async function loadPathsData() {
 
     _unsubscribe = onSnapshot(col(), (snap) => {
       if (snap.empty && !resolved) {
-        // Może być migracja z legacy
         const legacy = migrateLegacy();
         if (legacy.length) {
           _migrateToFirestore(legacy).then(() => {
@@ -99,7 +99,6 @@ async function _migrateToFirestore(legacyPaths) {
       console.warn('[paths] Błąd migracji:', e);
     }
   }
-  // Wyczyść legacy
   try { localStorage.removeItem(LEGACY_KEY); } catch {}
   console.log('[paths] Migracja zakończona');
 }
@@ -159,7 +158,6 @@ export async function createPath(name, description = '', color = null) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  // Zwróć obiekt natychmiast (Firestore listener uaktualni _paths)
   const newPath = { id: docRef.id, name, description, color, items: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   _paths.unshift(newPath);
   saveCache(_paths);
@@ -276,10 +274,6 @@ export async function renameGroupInPath(pathId, itemKey, newTitle) {
   await _saveItems(pathId, items);
 }
 
-/**
- * Próbuje połączyć placeholdery z artykułami o pasującym tytule.
- * Wywoływane po zapisaniu nowego artykułu.
- */
 export async function resolvePlaceholders(allArticleMeta) {
   const titleMap = {};
   allArticleMeta.forEach(a => { titleMap[a.title.toLowerCase()] = a; });
