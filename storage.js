@@ -2,7 +2,7 @@
 
 import {
   collection, doc, getDoc, getDocs, setDoc, deleteDoc,
-  query, orderBy, limit, serverTimestamp, where
+  query, orderBy, limit, serverTimestamp, where, updateDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const db = () => window.__db;
@@ -82,11 +82,27 @@ export async function deleteCategory(id) {
 
 // ── HISTORIA ──────────────────────────────────────────────
 
-/** Dodaje wpis do historii przeglądania */
+/**
+ * Dodaje wpis do historii przeglądania.
+ * Zwraca id nowo utworzonego dokumentu.
+ */
 export async function addHistoryEntry(articleId, articleTitle) {
   const ref = doc(collection(db(), 'history'));
   await setDoc(ref, {
     articleId,
+    articleTitle,
+    viewedAt: serverTimestamp()
+  });
+  return ref.id;
+}
+
+/**
+ * Aktualizuje timestamp i tytuł istniejącego wpisu historii.
+ * Używane do deduplikacji — zamiast nowego dokumentu odświeżamy stary.
+ */
+export async function updateHistoryEntry(id, articleTitle) {
+  const ref = doc(db(), 'history', id);
+  await updateDoc(ref, {
     articleTitle,
     viewedAt: serverTimestamp()
   });

@@ -2,6 +2,7 @@
 
 import { buildCategoryTree, getCategoryOptions, saveCategoryToStore, deleteCategoryFromStore, loadCategoriesData, getAllCategories } from './categories.js';
 import { filterByCategory } from './search.js';
+import { getAllMeta, saveArticle, getArticleFull } from './articles.js';
 import { showToast } from './ui.js';
 
 let navigateFn = null;
@@ -131,45 +132,62 @@ export function highlightActiveCategory(categoryId) {
 // ── MODAL KATEGORII ───────────────────────────────────────
 
 function openCategoryModal(existingCategory) {
-  const modal = document.getElementById('modal-category');
-  const titleEl = document.getElementById('modal-category-title');
-  const nameInput = document.getElementById('input-category-name');
-  const parentSelect = document.getElementById('input-category-parent');
+  const modal      = document.getElementById('modal-category');
+  const titleEl    = document.getElementById('modal-category-title');
+  const nameInput  = document.getElementById('input-category-name');
+  const parentSel  = document.getElementById('input-category-parent');
 
   titleEl.textContent = existingCategory ? 'Edytuj kategorię' : 'Nowa kategoria';
   nameInput.value = existingCategory?.name || '';
 
   const options = getCategoryOptions();
-  parentSelect.innerHTML = '<option value="">— brak (główna) —</option>';
+  parentSel.innerHTML = '<option value="">— brak (główna) —</option>';
   options.forEach(opt => {
     if (existingCategory && opt.id === existingCategory.id) return;
     const o = document.createElement('option');
     o.value = opt.id;
     o.textContent = opt.name;
     if (existingCategory && opt.id === existingCategory.parentId) o.selected = true;
-    parentSelect.appendChild(o);
+    parentSel.appendChild(o);
   });
 
   modal.dataset.editingId = existingCategory?.id || '';
+
+  // ── Przycisk usuwania ─────────────────────────────────
+  // Usuń stary przycisk jeśli istnieje (przy ponownym otwarciu modalu)
+  modal.querySelector('#btn-category-delete')?.remove();
+
+  if (existingCategory?.id) {
+    const actionsEl = modal.querySelector('.modal-actions');
+    const deleteBtn = document.createElement('button');
+    deleteBtn.id = 'btn-category-delete';
+    deleteBtn.className = 'btn-danger';
+    deleteBtn.style.marginRight = 'auto'; // wyrównaj do lewej
+    deleteBtn.textContent = 'Usuń';
+    deleteBtn.addEventListener('click', () => deleteCategoryFromModal(existingCategory));
+    actionsEl.prepend(deleteBtn);
+  }
+
   modal.classList.remove('hidden');
   nameInput.focus();
 }
 
 function closeCategoryModal() {
   document.getElementById('modal-category').classList.add('hidden');
+  document.getElementById('btn-category-delete')?.remove();
 }
 
 async function saveCategoryFromModal() {
-  const nameInput = document.getElementById('input-category-name');
-  const parentSelect = document.getElementById('input-category-parent');
-  const modal = document.getElementById('modal-category');
+  const nameInput  = document.getElementById('input-category-name');
+  const parentSel  = document.getElementById('input-category-parent');
+  const modal      = document.getElementById('modal-category');
   const name = nameInput.value.trim();
   if (!name) { nameInput.focus(); return; }
 
   const cat = {
-    id: modal.dataset.editingId || undefined,
+    id:       modal.dataset.editingId || undefined,
     name,
-    parentId: parentSelect.value || null
+    parentId: parentSel.value || null
   };
 
   try {
@@ -181,4 +199,83 @@ async function saveCategoryFromModal() {
     console.error(e);
     showToast('Błąd zapisu kategorii');
   }
+}
+
+// ── USUWANIE KATEGORII ────────────────────────────────────
+
+async function deleteCategoryFromModal(category) {
+  const allCats     = getAllCategories();
+  const allArticles = getAllMeta();
+
+  // Zbierz wszystkie id tej kategorii i jej potomków
+  const subtreeIds = getSubtreeIds(category.id, allCats);
+
+  // Policz artykuły w tej kategorii i podkategoriach
+  const affectedArticles = allArticles.filter(a => subtreeIds.includes(a.category));
+
+  // Policz podkategorie (bez samej kategorii)
+  const childCats = subtreeIds.filter(id => id !== category.id);
+
+  // Zbuduj czytelny komunikat
+  const lines = [`Usunąć kategorię „${category.name}"?`];
+  if (childCats.length) {
+    lines.push(`\nZostanie też usuniętych ${childCats.length} podkategor${childCats.length === 1 ? 'ia' : 'ii'}.`);
+  }
+  if (affectedArticles.length) {
+    lines.push(`\n${affectedArticles.length} artykuł${affectedArticles.length === 1 ? '' : 'ów'} straci przypisaną kategorię (nie zostaną usunięte).`);
+  }
+
+  if (!confirm(lines.join(''))) return;
+
+  closeCategoryModal();
+
+  const deleteBtn = document.getElementById('btn-category-save');
+  if (deleteBtn) { deleteBtn.disabled = true; }
+
+  try {
+    // 1. Usuń wszystkie kategorie z poddrzewa (od liści do korzenia)
+    for (const id of [...subtreeIds].reverse()) {
+      await deleteCategoryFromStore(id);
+    }
+
+    // 2. Wyczyść kategorię z artykułów których dotyczyła
+    if (affectedArticles.length) {
+      await Promise.all(affectedArticles.map(async meta => {
+        try {
+          const full = await getArticleFull(meta.id);
+          if (full) await saveArticle({ ...full, category: '' });
+        } catch(e) {
+          console.warn('Nie można wyczyścić kategorii artykułu:', meta.id, e);
+        }
+      }));
+    }
+
+    renderCategoryTree();
+    const msg = childCats.length || affectedArticles.length
+      ? `Usunięto „${category.name}"${childCats.length ? ` i ${childCats.length} podkategor${childCats.length===1?'ię':'ii'}` : ''}${affectedArticles.length ? `. ${affectedArticles.length} artykułów bez kategorii.` : '.'}`
+      : `Usunięto kategorię „${category.name}"`;
+    showToast(msg);
+
+  } catch(e) {
+    console.error(e);
+    showToast('Błąd usuwania kategorii: ' + e.message);
+  } finally {
+    if (deleteBtn) { deleteBtn.disabled = false; }
+  }
+}
+
+/**
+ * Zwraca id kategorii i wszystkich jej potomków (BFS).
+ */
+function getSubtreeIds(rootId, allCats) {
+  const ids = [];
+  const queue = [rootId];
+  while (queue.length) {
+    const current = queue.shift();
+    ids.push(current);
+    allCats
+      .filter(c => c.parentId === current)
+      .forEach(c => queue.push(c.id));
+  }
+  return ids;
 }
