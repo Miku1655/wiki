@@ -93,3 +93,7 @@ export function getCategoryOptions(tree = buildCategoryTree(), depth = 0) {
   }
   return result;
 }
+
+if (typeof window !== 'undefined') {
+  window.__getAllCategories = getAllCategories;
+}
