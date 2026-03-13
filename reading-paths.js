@@ -1,19 +1,12 @@
 // reading-paths.js — Ścieżki czytania z synchronizacją Firestore
 
-import { getFirestore, collection, doc, getDocs, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const CACHE_KEY = 'kp_paths_v2';
 const LEGACY_KEY = 'kp_reading_paths';
 
-let _db      = null;
-let _paths   = [];
-let _unsubscribe = null;
-let _listeners = [];
-
 function db() {
-  if (!_db) _db = getFirestore(getApp());
-  return _db;
+  return window.__db;
 }
 
 function col() {
