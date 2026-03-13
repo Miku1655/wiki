@@ -212,9 +212,37 @@
     bottom: 64px;
   }
 
+  /* ── Prevent any horizontal overflow/scroll ──────────── */
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
+  #main-content {
+    overflow-x: hidden;
+  }
+
+  /* Force all view containers to stay within viewport */
+  #view-home,
+  #view-article,
+  #view-history,
+  #view-editor,
+  #view-path {
+    box-sizing: border-box;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  /* Kill inline max-width / padding overrides from JS-rendered views */
+  [id="view-home"] {
+    padding: 20px 14px !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
   /* ── Views — comfortable padding ─────────────────────── */
   #view-home {
-    padding: 20px 16px;
+    padding: 20px 14px;
     max-width: 100%;
   }
 
@@ -276,10 +304,13 @@
     padding: 20px 16px;
   }
 
-  /* Category / all articles */
-  #view-home[style] {
-    padding: 20px 16px !important;
+  /* Category / all articles — override all inline style padding/max-width */
+  #view-home[style],
+  div[id="view-home"] {
+    padding: 16px 14px !important;
     max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   /* ── Editor ───────────────────────────────────────────── */

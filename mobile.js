@@ -4,6 +4,9 @@
 export function initMobile(navigateFn) {
   if (!isMobileLayout()) return;
 
+  _drawerNavigateFn = navigateFn;
+  window.__mobileNavFn = navigateFn;
+
   injectBottomNav(navigateFn);
   injectMobileDrawer();
   patchPanelsForMobile();
@@ -86,8 +89,9 @@ function setActiveNav(view) {
 
 // ── MOBILE DRAWER (category tree) ─────────────────────────
 
+let _drawerNavigateFn = null;
+
 function injectMobileDrawer() {
-  // Clone the left sidebar content into a mobile drawer
   const drawer = document.createElement('div');
   drawer.id = 'mobile-drawer';
 
@@ -98,36 +102,112 @@ function injectMobileDrawer() {
   document.body.appendChild(drawer);
 
   overlay.addEventListener('click', closeDrawer);
-
-  // We'll populate the drawer with the category tree content
-  // by moving/cloning the sidebar-left-inner contents
-  const sidebarInner = document.getElementById('sidebar-left-inner');
-  if (sidebarInner) {
-    drawer.appendChild(sidebarInner.cloneNode(true));
-    // Keep sidebar-left in sync — observe changes and re-clone
-    const observer = new MutationObserver(() => {
-      if (drawer.innerHTML !== sidebarInner.innerHTML) {
-        drawer.innerHTML = '';
-        drawer.appendChild(sidebarInner.cloneNode(true));
-        // Re-wire links in drawer
-        wireDrawerLinks();
-      }
-    });
-    observer.observe(sidebarInner, { childList: true, subtree: true });
-    wireDrawerLinks();
-  }
 }
 
-function wireDrawerLinks() {
+/**
+ * Build drawer content fresh each time it opens.
+ * Reads category ids from window.__getAllCategories (exposed by categories.js patch),
+ * with fallback to the already-rendered sidebar DOM labels.
+ */
+function buildDrawerContent(navigateFn) {
   const drawer = document.getElementById('mobile-drawer');
   if (!drawer) return;
-  // Category tree links
-  drawer.querySelectorAll('.tree-node-row, .cat-nav').forEach(el => {
-    el.addEventListener('click', (e) => {
-      // Don't double-fire if original handler navigates
-      setTimeout(() => closeDrawer(), 150);
+  drawer.innerHTML = '';
+
+  // Header row
+  const header = document.createElement('div');
+  header.style.cssText = [
+    'padding:14px 16px 10px',
+    'font-size:.72rem',
+    'font-weight:500',
+    'text-transform:uppercase',
+    'letter-spacing:.08em',
+    'color:var(--text-faint)',
+    'border-bottom:1px solid var(--border)',
+  ].join(';');
+  header.textContent = 'Kategorie';
+  drawer.appendChild(header);
+
+  // Get categories — prefer the global exposed by categories.js, fall back to DOM
+  const cats = window.__getAllCategories ? window.__getAllCategories() : [];
+
+  if (cats.length > 0) {
+    // Build from data — guaranteed to have correct ids
+    const map = {};
+    cats.forEach(c => { map[c.id] = { ...c, children: [] }; });
+    const roots = [];
+    cats.forEach(c => {
+      if (c.parentId && map[c.parentId]) map[c.parentId].children.push(map[c.id]);
+      else roots.push(map[c.id]);
     });
+
+    function renderCat(node, depth) {
+      const row = document.createElement('div');
+      row.className = 'tree-node-row';
+      row.style.paddingLeft = (14 + depth * 14) + 'px';
+      row.innerHTML = [
+        `<span class="tree-toggle" style="width:16px"></span>`,
+        `<span class="tree-icon" style="font-size:.75rem;color:var(--text-faint)">${node.children.length ? '📁' : '📂'}</span>`,
+        `<span class="tree-label">${escDrawer(node.name)}</span>`,
+      ].join('');
+      row.addEventListener('click', () => {
+        navigateFn('category/' + node.id);
+        closeDrawer();
+      });
+      drawer.appendChild(row);
+      node.children.forEach(child => renderCat(child, depth + 1));
+    }
+    roots.forEach(root => renderCat(root, 0));
+  } else {
+    // Fallback: read from sidebar DOM labels and match by name
+    const sidebarInner = document.getElementById('sidebar-left-inner');
+    const allRows = sidebarInner ? sidebarInner.querySelectorAll('.tree-node-row') : [];
+    allRows.forEach(row => {
+      const label = row.querySelector('.tree-label')?.textContent?.trim() || '';
+      if (!label) return;
+
+      const newRow = document.createElement('div');
+      newRow.className = 'tree-node-row';
+      newRow.style.cssText = row.style.cssText;
+      newRow.innerHTML = row.innerHTML;
+
+      newRow.addEventListener('click', () => {
+        if (label === 'Nieposegregowane') { navigateFn('category/__uncategorized__'); closeDrawer(); return; }
+        if (label === 'Wszystkie artykuły') { navigateFn('all-articles'); closeDrawer(); return; }
+        // Match against cats if available
+        const match = cats.find(c => c.name === label);
+        if (match) { navigateFn('category/' + match.id); closeDrawer(); return; }
+        navigateFn('home'); closeDrawer();
+      });
+      drawer.appendChild(newRow);
+    });
+  }
+
+  // Always add Nieposegregowane + Wszystkie artykuły at the bottom
+  const specialRows = [
+    { label: 'Nieposegregowane', icon: '📋', route: 'category/__uncategorized__' },
+    { label: 'Wszystkie artykuły', icon: '📄', route: 'all-articles' },
+  ];
+  const sep = document.createElement('div');
+  sep.style.cssText = 'height:1px;background:var(--border-light);margin:4px 0';
+  drawer.appendChild(sep);
+
+  specialRows.forEach(({ label, icon, route }) => {
+    const row = document.createElement('div');
+    row.className = 'tree-node-row';
+    row.style.paddingLeft = '14px';
+    row.innerHTML = [
+      `<span class="tree-toggle" style="width:16px"></span>`,
+      `<span class="tree-icon" style="font-size:.75rem;color:var(--text-faint)">${icon}</span>`,
+      `<span class="tree-label" style="color:var(--text-muted)">${label}</span>`,
+    ].join('');
+    row.addEventListener('click', () => { navigateFn(route); closeDrawer(); });
+    drawer.appendChild(row);
   });
+}
+
+function escDrawer(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function toggleDrawer() {
@@ -145,12 +225,8 @@ function toggleDrawer() {
 function openDrawer() {
   const drawer = document.getElementById('mobile-drawer');
   const overlay = document.getElementById('mobile-drawer-overlay');
-  // Refresh content from sidebar
-  const sidebarInner = document.getElementById('sidebar-left-inner');
-  if (sidebarInner && drawer) {
-    drawer.innerHTML = '';
-    drawer.appendChild(sidebarInner.cloneNode(true));
-  }
+  // Build fresh content with working click handlers
+  buildDrawerContent(_drawerNavigateFn || window.__mobileNavFn);
   drawer?.classList.add('open');
   overlay?.classList.add('visible');
   document.getElementById('mobile-nav-cats')?.classList.add('active');
