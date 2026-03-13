@@ -1,0 +1,550 @@
+/* ============================================================
+   KOMPENDIUM — Mobile & Touch UI
+   Targets: phones (<600px), tablets (<900px)
+   ============================================================ */
+
+/* ── BOTTOM NAV BAR (mobile only) ───────────────────────── */
+#mobile-nav {
+  display: none;
+}
+
+@media (max-width: 640px) {
+
+  /* ── Layout overrides ─────────────────────────────────── */
+  body { overflow: hidden; }
+
+  #layout {
+    flex-direction: column;
+  }
+
+  /* Hide sidebars on mobile — replaced by bottom nav/drawers */
+  #sidebar-left,
+  #sidebar-right {
+    display: none !important;
+  }
+
+  /* Main content takes all space */
+  #main-content {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 72px; /* room for bottom nav */
+  }
+
+  /* ── Topbar ───────────────────────────────────────────── */
+  #topbar {
+    padding: 0 8px;
+    gap: 6px;
+    height: 50px;
+    --topbar-h: 50px;
+  }
+
+  #topbar-left {
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  #logo {
+    font-size: 1rem;
+  }
+
+  #btn-toggle-sidebar {
+    display: none; /* replaced by mobile nav */
+  }
+
+  /* Search takes remaining space */
+  #search-wrapper {
+    flex: 1;
+    min-width: 0;
+  }
+
+  #search-input {
+    font-size: .88rem;
+    padding: 6px 10px;
+  }
+
+  /* Hide topbar-right nav buttons — moved to bottom nav */
+  #topbar-right {
+    display: none;
+  }
+
+  /* ── Bottom navigation bar ───────────────────────────── */
+  #mobile-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: var(--bg-panel);
+    border-top: 1px solid var(--border);
+    z-index: 300;
+    align-items: stretch;
+    box-shadow: 0 -2px 12px rgba(0,0,0,.08);
+  }
+
+  .mobile-nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 8px 4px;
+    font-family: var(--font-ui);
+    transition: color var(--transition), background var(--transition);
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+  }
+
+  .mobile-nav-btn:active {
+    background: var(--bg-hover);
+  }
+
+  .mobile-nav-btn.active {
+    color: var(--accent);
+  }
+
+  .mobile-nav-btn .mnb-icon {
+    font-size: 1.2rem;
+    line-height: 1;
+  }
+
+  .mobile-nav-btn .mnb-label {
+    font-size: .58rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    line-height: 1;
+  }
+
+  /* New article button — accent highlight */
+  #mobile-nav-new {
+    color: var(--accent);
+  }
+
+  /* ── Mobile drawer (left sidebar as overlay) ─────────── */
+  #mobile-drawer {
+    position: fixed;
+    top: 50px; /* topbar height */
+    left: 0;
+    bottom: 64px; /* above bottom nav */
+    width: min(80vw, 300px);
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    z-index: 280;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    transform: translateX(-100%);
+    transition: transform 240ms cubic-bezier(.4,0,.2,1);
+  }
+
+  #mobile-drawer.open {
+    transform: translateX(0);
+  }
+
+  #mobile-drawer-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    top: 50px;
+    bottom: 64px;
+    background: rgba(0,0,0,.35);
+    z-index: 270;
+    backdrop-filter: blur(2px);
+  }
+
+  #mobile-drawer-overlay.visible {
+    display: block;
+  }
+
+  /* Category tree inside drawer */
+  #mobile-drawer #category-tree-header {
+    padding: 14px 16px 8px;
+  }
+
+  #mobile-drawer .tree-node-row {
+    padding: 10px 16px;
+    font-size: .9rem;
+    min-height: 44px;
+  }
+
+  /* ── Side panels (full-width on mobile) ──────────────── */
+  .side-panel {
+    width: 100% !important;
+    max-width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    border-radius: var(--radius) var(--radius) 0 0;
+    top: auto;
+    bottom: 64px; /* above mobile nav */
+    height: 70vh;
+    transform: translateY(100%);
+    transition: transform 240ms cubic-bezier(.4,0,.2,1);
+  }
+
+  .side-panel.visible {
+    transform: translateY(0);
+  }
+
+  .side-panel-header {
+    padding: 14px 16px;
+  }
+
+  /* Drag handle on panels */
+  .side-panel-header::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 0 auto 10px;
+  }
+
+  /* Panel overlay covers everything above */
+  #panel-overlay {
+    bottom: 64px;
+  }
+
+  /* ── Views — comfortable padding ─────────────────────── */
+  #view-home {
+    padding: 20px 16px;
+    max-width: 100%;
+  }
+
+  #view-home h1 {
+    font-size: 1.5rem;
+  }
+
+  .home-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .home-stats-bar {
+    margin-bottom: 20px;
+    gap: 4px;
+  }
+
+  .stat-pill .stat-num {
+    font-size: 1.1rem;
+  }
+
+  #home-header {
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .random-card {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Article view */
+  #view-article {
+    padding: 20px 16px;
+  }
+
+  #view-article h1 {
+    font-size: 1.4rem;
+  }
+
+  #article-actions {
+    padding: 8px 16px;
+    gap: 6px;
+    flex-wrap: wrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #article-actions .btn-small {
+    font-size: .75rem;
+    padding: 6px 10px;
+    white-space: nowrap;
+  }
+
+  /* History */
+  #view-history {
+    padding: 20px 16px;
+  }
+
+  /* Category / all articles */
+  #view-home[style] {
+    padding: 20px 16px !important;
+    max-width: 100% !important;
+  }
+
+  /* ── Editor ───────────────────────────────────────────── */
+  #view-editor {
+    height: calc(100vh - 50px - 64px);
+  }
+
+  #editor-topbar {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  #editor-title {
+    font-size: .95rem;
+    min-width: 0;
+  }
+
+  #editor-actions {
+    gap: 4px;
+  }
+
+  #editor-actions kbd {
+    display: none;
+  }
+
+  /* In mobile, hide split mode — force single pane */
+  #btn-split-mode {
+    display: none;
+  }
+
+  #editor-meta {
+    padding: 6px 10px;
+    gap: 8px;
+  }
+
+  #editor-format-toolbar {
+    padding: 4px 8px;
+    gap: 1px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+
+  /* Bigger touch targets for format buttons */
+  .fmt-btn {
+    padding: 6px 8px;
+    font-size: .82rem;
+    min-height: 34px;
+    flex-shrink: 0;
+  }
+
+  .fmt-sep {
+    flex-shrink: 0;
+  }
+
+  /* Editor body — single pane only */
+  #editor-body {
+    flex-direction: column;
+  }
+
+  #editor-divider {
+    display: none;
+  }
+
+  #editor-pane,
+  #preview-pane {
+    height: 100%;
+  }
+
+  /* Textarea — larger touch area */
+  #editor-textarea {
+    font-size: .9rem;
+    padding: 14px 16px;
+  }
+
+  /* ── Modals — full screen on mobile ──────────────────── */
+  .modal-box {
+    min-width: 0;
+    max-width: 100%;
+    width: calc(100% - 24px);
+    padding: 22px 18px;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .modal {
+    align-items: flex-end;
+  }
+
+  /* Wide modal (Wikipedia import) */
+  .modal-wide {
+    max-width: 100% !important;
+    width: 100% !important;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .wiki-modal-body {
+    grid-template-columns: 1fr;
+    max-height: 50vh;
+  }
+
+  .wiki-preview-col {
+    display: none; /* hide preview on mobile, just show list */
+  }
+
+  /* ── Search results ───────────────────────────────────── */
+  #search-results {
+    position: fixed;
+    top: 50px;
+    left: 0;
+    right: 0;
+    max-height: 60vh;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    z-index: 350;
+  }
+
+  .search-result-item {
+    padding: 12px 16px;
+    min-height: 44px;
+  }
+
+  /* ── Path view ────────────────────────────────────────── */
+  #path-header {
+    padding: 14px 16px;
+  }
+
+  #path-header-actions {
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  #path-progress-section {
+    padding: 10px 16px;
+  }
+
+  #path-items-list {
+    padding: 8px 16px 24px;
+  }
+
+  .path-item {
+    padding: 12px 10px;
+  }
+
+  .path-item-drag {
+    opacity: 0.5;
+  }
+
+  /* ── Subcat grid ─────────────────────────────────────── */
+  .subcat-grid {
+    gap: 8px;
+  }
+
+  .subcat-card {
+    font-size: .85rem;
+    padding: 8px 12px;
+  }
+
+  /* ── Recent list — bigger tap targets ────────────────── */
+  .recent-list li {
+    padding: 8px 0;
+    min-height: 40px;
+  }
+
+  .recent-list a {
+    font-size: .9rem;
+    padding: 2px 0;
+  }
+
+  /* ── Toast ────────────────────────────────────────────── */
+  #toast {
+    bottom: 80px; /* above mobile nav */
+    font-size: .85rem;
+    padding: 10px 20px;
+    max-width: calc(100% - 32px);
+    text-align: center;
+  }
+
+  /* ── Wiki-AC dropdown ────────────────────────────────── */
+  #wiki-ac-dropdown {
+    min-width: min(320px, 90vw);
+    max-width: min(400px, 95vw);
+  }
+
+  .wiki-ac-item {
+    padding: 12px 14px;
+    font-size: .9rem;
+  }
+
+  /* ── Bulk toolbar ────────────────────────────────────── */
+  .bulk-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  /* ── Auth modal ──────────────────────────────────────── */
+  #modal-auth .modal-box {
+    min-width: 0;
+  }
+
+  /* ── Tabs list in panel ───────────────────────────────── */
+  .tab-item {
+    padding: 12px 16px;
+    min-height: 48px;
+  }
+
+  /* ── Tag panel items ──────────────────────────────────── */
+  .tag-panel-item {
+    padding: 12px 16px;
+    min-height: 48px;
+  }
+
+  /* Path cards */
+  .path-card {
+    padding: 14px 16px;
+    min-height: 60px;
+  }
+
+  /* ── Article path widget ──────────────────────────────── */
+  #article-path-widget {
+    flex-wrap: wrap;
+  }
+
+  /* ── Home paths row ───────────────────────────────────── */
+  .home-paths-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ── Tablet (600-900px) ──────────────────────────────────── */
+@media (min-width: 601px) and (max-width: 900px) {
+  #sidebar-right { display: none; }
+  #sidebar-left { width: 200px; }
+
+  #topbar-right .nav-btn-label { display: none; }
+  #topbar-right .nav-btn { min-width: 36px; padding: 5px 6px; }
+
+  #view-home { padding: 24px 28px; }
+  #view-article { padding: 24px 28px; }
+  .home-grid { grid-template-columns: 1fr 1fr; }
+
+  #main-content { padding-bottom: 0; }
+}
+
+/* ── Touch-friendly improvements (all touch devices) ──────── */
+@media (hover: none) and (pointer: coarse) {
+  /* Larger click targets */
+  .btn-small { min-height: 36px; padding: 6px 12px; }
+  .btn-primary, .btn-ghost, .btn-danger { min-height: 44px; }
+  .icon-btn { width: 40px; height: 40px; }
+
+  .tree-node-row { min-height: 44px; }
+
+  .path-item-status-btn { padding: 6px; }
+  .path-item-btn { padding: 6px 10px; min-height: 32px; }
+
+  /* Always show action buttons (no hover needed) */
+  .path-item-actions { opacity: 1; }
+  .path-item-drag { opacity: 0.4; }
+  .path-group-header .path-item-actions { opacity: 1; }
+  .btn-remove-bookmark { opacity: 1; }
+  .h-delete { color: var(--text-faint) !important; }
+
+  /* Remove hover-only states that break on touch */
+  .recent-list li:hover .btn-remove-bookmark { opacity: 1; }
+}
